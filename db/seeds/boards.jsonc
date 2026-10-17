@@ -1,0 +1,203 @@
+// Curated job sources. Committed example: edit freely, then run
+//   python3 -m db.seed              # upsert by name (idempotent)
+//   python3 -m db.seed --prune      # also disable boards missing from this file
+// A fresh clone starts from THIS file — no two checkouts need the same boards.
+//
+// Per board: name (stable key; add_job.py and --board match on it),
+// kind (job_board | careers_page | rss | referral | agency | other),
+// scan_strategy (rss | jobspy | api | html | manual | disabled),
+// scan_config (strategy settings), enabled (0/1), url, notes.
+{
+  "boards": [
+    {
+      "name": "We Work Remotely",
+      "kind": "job_board",
+      "url": "https://weworkremotely.com/",
+      "enabled": 1,
+      "notes": "Remote jobs in design, programming, marketing and more",
+      "scan_strategy": "rss",
+      "scan_config": { "feed_url": "https://weworkremotely.com/categories/remote-programming-jobs.rss" }
+    },
+    {
+      "name": "Levels.fyi",
+      "kind": "job_board",
+      "url": "https://www.levels.fyi/jobs",
+      "enabled": 1,
+      "notes": "Salaries & Tools to Level Up Your Career",
+      "scan_strategy": "html",
+      "scan_config": {}
+    },
+    {
+      "name": "Remotive",
+      "kind": "job_board",
+      "url": "https://remotive.com/",
+      "enabled": 1,
+      "notes": null,
+      "scan_strategy": "api",
+      "scan_config": { "source": "remotive", "endpoint": "https://remotive.com/api/remote-jobs?category=software-dev" }
+    },
+    {
+      "name": "Crossover",
+      "kind": "job_board",
+      "url": "https://www.crossover.com/",
+      "enabled": 1,
+      "notes": "SPA fallback at /feed + bot wall; manual",
+      "scan_strategy": "manual",
+      "scan_config": {}
+    },
+    {
+      "name": "Relocate.me",
+      "kind": "job_board",
+      "url": "https://relocate.me/",
+      "enabled": 1,
+      "notes": "Software Developer Jobs in Germany w/ Relocation Packages",
+      "scan_strategy": "html",
+      "scan_config": {}
+    },
+    {
+      "name": "Cleverjobs",
+      "kind": "job_board",
+      "url": "https://cleverjobs.net/",
+      "enabled": 0,
+      "notes": "Unreachable from this host; disabled",
+      "scan_strategy": "html",
+      "scan_config": {}
+    },
+    {
+      "name": "Google Search: lever/greenhouse/ashbyhq/dover",
+      "kind": "other",
+      "url": "https://www.google.com/search?q=site%3Alever.co+%7C+site%3Agreenhouse.io+%7C+site%3Ajobs.ashbyhq.com+%7C+site%3Aapp.dover.io+%28engineer+%7C+developer%29+-remote+after%3A2022-08-15",
+      "enabled": 1,
+      "notes": "site:lever.co | site:greenhouse.io | site:jobs.ashbyhq.com | site:app.dover.io (engineer | developer) -remote after:2022-08-15",
+      "scan_strategy": "manual",
+      "scan_config": {}
+    },
+    {
+      "name": "RemoteAfrica",
+      "kind": "job_board",
+      "url": "https://remoteafrica.io/",
+      "enabled": 1,
+      "notes": "Dormant board; manual",
+      "scan_strategy": "manual",
+      "scan_config": {}
+    },
+    {
+      "name": "Remote4Africa",
+      "kind": "job_board",
+      "url": "https://remote4africa.com/",
+      "enabled": 1,
+      "notes": "Jobs behind a paywall; manual",
+      "scan_strategy": "manual",
+      "scan_config": {}
+    },
+    {
+      "name": "Real Work From Anywhere",
+      "kind": "job_board",
+      "url": "https://www.realworkfromanywhere.com/",
+      "enabled": 1,
+      "notes": "Feed verified live; XML repaired by scanner",
+      "scan_strategy": "rss",
+      "scan_config": { "feed_url": "https://www.realworkfromanywhere.com/rss.xml" }
+    },
+    {
+      "name": "Wellfound",
+      "kind": "job_board",
+      "url": "https://wellfound.com/jobs",
+      "enabled": 1,
+      "notes": null,
+      "scan_strategy": "html",
+      "scan_config": {}
+    },
+    {
+      "name": "80,000 Hours",
+      "kind": "job_board",
+      "url": "https://jobs.80000hours.org/",
+      "enabled": 1,
+      "notes": "Job board | 80,000 Hours",
+      "scan_strategy": "html",
+      "scan_config": {}
+    },
+    {
+      "name": "gojobs.run",
+      "kind": "job_board",
+      "url": "https://gojobs.run/",
+      "enabled": 1,
+      "notes": "Golang Jobs Updated Daily",
+      "scan_strategy": "html",
+      "scan_config": {}
+    },
+    {
+      "name": "Dover Startup Jobs",
+      "kind": "job_board",
+      "url": "https://app.dover.com/startup-jobs",
+      "enabled": 1,
+      "notes": null,
+      "scan_strategy": "html",
+      "scan_config": {}
+    },
+    {
+      "name": "RemoteOK",
+      "kind": "job_board",
+      "url": "https://remoteok.com/",
+      "enabled": 1,
+      "notes": "Public JSON API (RSS feed retired by RemoteOK). Tag=dev keeps it technical. Credit + link back per ToS.",
+      "scan_strategy": "api",
+      "scan_config": { "source": "remoteok", "endpoint": "https://remoteok.com/api?tags=dev" }
+    },
+    {
+      "name": "Himalayas",
+      "kind": "job_board",
+      "url": "https://himalayas.app/",
+      "enabled": 1,
+      "notes": "Large mixed remote feed; keyword scoring filters non-tech postings.",
+      "scan_strategy": "rss",
+      "scan_config": { "feed_url": "https://himalayas.app/jobs/rss" }
+    },
+    {
+      "name": "Indeed (JobSpy)",
+      "kind": "job_board",
+      "url": "https://www.indeed.com/",
+      "enabled": 1,
+      "notes": "Scraped via JobSpy; search_term tuned to the senior fullstack profile.",
+      "scan_strategy": "jobspy",
+      "scan_config": { "source": "indeed", "search_term": "senior software engineer", "location": "Remote", "results_wanted": 40, "hours_old": 36 }
+    },
+    {
+      "name": "ZipRecruiter (JobSpy)",
+      "kind": "job_board",
+      "url": "https://www.ziprecruiter.com/",
+      "enabled": 1,
+      "notes": "Scraped via JobSpy.",
+      "scan_strategy": "jobspy",
+      "scan_config": { "source": "zip_recruiter", "search_term": "senior software engineer", "location": "Remote", "results_wanted": 30, "hours_old": 36 }
+    },
+    {
+      "name": "LinkedIn (JobSpy)",
+      "kind": "job_board",
+      "url": "https://www.linkedin.com/jobs/",
+      "enabled": 1,
+      "notes": "Scraped via JobSpy; LinkedIn rate-limits bursts (results kept low).",
+      "scan_strategy": "jobspy",
+      "scan_config": { "source": "linkedin", "search_term": "senior software engineer", "location": "Remote", "results_wanted": 25, "hours_old": 36 }
+    },
+    {
+      "name": "X Bookmarks",
+      "kind": "other",
+      "url": "https://x.com/i/bookmarks",
+      "enabled": 1,
+      "notes": "Own X bookmarks via logged-in Chrome (x_bookmarks_cli) or Playwright fallback (x_bookmarks, profile in secrets/). Run python3 -m scanner.tools.x_login once, and again if the scan log reports an expired session or Cloudflare challenge.",
+      // YOUR OpenCLI profile id for the X-logged-in Chrome — change on a fresh clone
+      "scan_strategy": "html",
+      "scan_config": { "mode": "x_bookmarks_cli", "profile": "g3pxjge8", "cap": 50 }
+    },
+    {
+      "name": "Manual",
+      "kind": "other",
+      "url": null,
+      "enabled": 1,
+      "notes": "Hand-added leads (python3 -m scanner.tools.add_job). scan_strategy=manual keeps scans away.",
+      "scan_strategy": "manual",
+      "scan_config": {}
+    }
+  ]
+}

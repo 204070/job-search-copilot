@@ -1,0 +1,23 @@
+# Runtime output — scan/lead reports go to logs/leads/YYYY-MM-DD.md.
+# Log output: safe to delete, rotate, never committed.
+logs/
+
+# Private documents live in artifacts/ — standard names for scripts
+# (resume.md, cover-letter.md; see artifacts/README.md). Everything here is
+# ignored except the committed README and the *.example.md placeholders.
+artifacts/*
+!artifacts/README.md
+!artifacts/*.example.md
+
+# Credentials & database
+secrets/
+db/jobs.db
+db/*.db-wal
+db/*.db-shm
+db/*.bak
+
+# Housekeeping
+__pycache__/
+*.pyc
+node_modules/
+cron/crontab.backup.*

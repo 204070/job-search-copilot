@@ -1,0 +1,41 @@
+// Scoring terms for the keyword matcher (scanner/keywords.py).
+// Committed example: replace with terms from your own resume —
+// `python3 -m scanner` picks up edits automatically (mtime check).
+// Entry: term (label, also the default pattern), field ('title' = OR-gate,
+// 'any' = weighted coverage), weight (boost), enabled (0 keeps, unused).
+// pattern (optional): hand-written regex overriding the term — use for
+// alternations and optional words plain terms can't express (e.g. the
+// fullstack group below). Invalid patterns raise at load.
+{
+  "keywords": [
+    { "term": "software engineer", "field": "title", "weight": 1, "enabled": 1 },
+    { "term": "software developer", "field": "title", "weight": 1, "enabled": 1 },
+    { "term": "fullstack group", "field": "title", "weight": 1, "enabled": 1, "pattern": "full[- ]?stack" },
+    { "term": "backend group", "field": "title", "weight": 1, "enabled": 1, "pattern": "back[- ]?end" },
+    { "term": "platform engineer", "field": "title", "weight": 1, "enabled": 1 },
+    { "term": "ai engineering group", "field": "title", "weight": 1, "enabled": 1, "pattern": "ai\\s+(engineer|engineering)|llm\\s+engineer|machine learning engineer" },
+    { "term": "forward deployed engineer", "field": "title", "weight": 1, "enabled": 1 },
+    { "term": "product engineer", "field": "title", "weight": 1, "enabled": 1 },
+    { "term": "devops group", "field": "title", "weight": 1, "enabled": 1, "pattern": "devops|site reliability|platform operations" },
+    { "term": "typescript", "field": "any", "weight": 1, "enabled": 1 },
+    { "term": "javascript", "field": "any", "weight": 1, "enabled": 1 },
+    { "term": "python", "field": "any", "weight": 1, "enabled": 1 },
+    { "term": "golang", "field": "any", "weight": 1, "enabled": 1 },
+    { "term": "rust", "field": "any", "weight": 1, "enabled": 1 },
+    { "term": "node", "field": "any", "weight": 1, "enabled": 1 },
+    { "term": "react", "field": "any", "weight": 1, "enabled": 1 },
+    { "term": "django", "field": "any", "weight": 1, "enabled": 1 },
+    { "term": "fastify", "field": "any", "weight": 1, "enabled": 1 },
+    { "term": "spring boot", "field": "any", "weight": 1, "enabled": 1 },
+    { "term": "postgres", "field": "any", "weight": 1, "enabled": 1 },
+    { "term": "redis", "field": "any", "weight": 1, "enabled": 1 },
+    { "term": "aws", "field": "any", "weight": 1, "enabled": 1 },
+    { "term": "terraform", "field": "any", "weight": 1, "enabled": 1 },
+    { "term": "kubernetes", "field": "any", "weight": 1, "enabled": 1 },
+    { "term": "docker", "field": "any", "weight": 1, "enabled": 1 },
+    { "term": "graphql", "field": "any", "weight": 1, "enabled": 1 },
+    { "term": "airflow", "field": "any", "weight": 1, "enabled": 1 },
+    { "term": "grafana", "field": "any", "weight": 1, "enabled": 1 },
+    { "term": "next.js", "field": "any", "weight": 1, "enabled": 1 }
+  ]
+}
