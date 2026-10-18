@@ -33,7 +33,16 @@
     "\\bsre\\b",
     "\\bfull[- ]?stack\\b",
     "\\bback[- ]?end\\b",
-    "\\bfront[- ]?end\\b"
+    "\\bfront[- ]?end\\b",
+    // Engineering management, in scope on request. The general patterns above
+    // do not admit it ("Engineering Manager" says engineering, and the exclude
+    // half used to veto on `manager`), so it needs both halves changed.
+    "\\bengineering manager\\b",
+    "\\bmanager,? (?:of )?engineering\\b"
+    // Also in scope and already admitted by the general patterns, listed here
+    // so the target families are readable in one place: Product Engineer,
+    // Forward Deployed Engineer (engineer), Solutions Architect (architect),
+    // AI Engineer, LLM Engineer (engineer).
   ],
   "title_exclude": [
     "sales engineer",
@@ -52,11 +61,20 @@
     "product manager",
     "project manager",
     "program manager",
-    "engineering manager",
     "product owner",
-    // Leadership and non-IC titles. `manager` covers "Engineering Manager" and
-    // "Manager, Engineering"; `engineering` in title_admit needs these guards.
-    "\\bmanager\\b",
+    // Engineering management is a target role, so the blanket `\bmanager\b`
+    // veto is gone and the kinds of manager that stay out are named. Without
+    // the blanket rule the admit half still has to match, which is what keeps
+    // "Community Manager" and "Office Manager" out on their own.
+    "account manager",
+    "delivery manager",
+    "office manager",
+    "community manager",
+    "social media",
+    "scrum master",
+    "recruit",
+    // Leadership above first-line management, not asked for: director, VP,
+    // chief, president, head of.
     "\\bdirector\\b",
     "\\bvp\\b",
     "head of",
@@ -120,6 +138,25 @@
     { "term": "next.js", "weight": 2, "enabled": 1, "pattern": "next[. ]?js" },
     { "term": "websocket group", "weight": 2, "enabled": 1,
       "pattern": "websocket|web sockets|realtime|real-time" },
+
+    // AI engineering, added 18/10 because the role families of interest now
+    // include AI Engineer and LLM Engineer and the scorer was blind to all of
+    // it: an ad naming RAG, LLMs and agents matched nothing on this list.
+    // Weight 2 rather than 3: the work is real (AI agents in a shipped
+    // product) but newer than the production core.
+    { "term": "ai", "weight": 2, "enabled": 1,
+      "pattern": "\\bai\\b|artificial intelligence|generative ai|\\bgenai\\b" },
+    { "term": "llm", "weight": 2, "enabled": 1,
+      "pattern": "\\bllms?\\b|large language models?" },
+    { "term": "rag", "weight": 2, "enabled": 1,
+      "pattern": "\\brag\\b|retrieval[- ]augmented" },
+
+    // Location affinity rather than stack. A posting that names your country
+    // or your city is telling you it will hire where you are, which is worth
+    // knowing in the score as well as in `region_scope` (where Lagos and
+    // Nigeria already rank in the covering band).
+    { "term": "nigeria", "weight": 2, "enabled": 1 },
+    { "term": "lagos", "weight": 2, "enabled": 1 },
 
     { "term": "rust", "weight": 1, "enabled": 1 },
     { "term": "golang", "weight": 1, "enabled": 1 },

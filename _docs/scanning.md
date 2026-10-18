@@ -124,13 +124,21 @@ python3 -m scanner.tools.rescore            # re-derive match_score after the sc
   - `title_exclude` — regexes that veto a posting outright, checked first. This
     is what keeps a "Support Engineer" advert that name-drops Kubernetes from
     scoring like an infrastructure role.
-  - `title_admit` — regexes; the title must match at least one.
+  - `title_admit` — regexes; the title must match at least one. The in-scope
+    role families are legible across these two lists: engineering, product and
+    forward-deployed IC roles, architects, SRE, and Engineering Manager. The
+    manager family is a target role (18/10), which is why the blanket
+    `\bmanager\b` veto is gone and the manager kinds that are *not* engineering
+    management are named instead; director and above deliberately stays out.
   - `core_weight` — the weight tier that counts as a full match (see below).
   - `keywords[]` — `term`, `weight`, `enabled`; optional hand-written `pattern`
     regex override for alternations/optional words plain terms can't express
     (invalid patterns raise at load). Plain terms compile to case-insensitive
     `\bterm\b`, so `rust` never hits `robust`. A legacy `field: "title"` entry
-    still loads, as one more admit pattern.
+    still loads, as one more admit pattern. Two kinds of signal live in this
+    list and are commented apart: stack terms (weight 3 is the verified core)
+    and location affinity (`nigeria`, `lagos`), because an advert that names
+    your country or city is telling you it will hire where you are.
 - Score = 100 × matched weight / target, capped at 99, where `target` is the
   weight of the entries at or above `core_weight`. The target is the point: a
   posting naming the whole core tier scores 100, and adding another incidental

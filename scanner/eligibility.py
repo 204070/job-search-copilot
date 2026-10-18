@@ -100,16 +100,21 @@ _REGION = re.compile(
     r"australia|new zealand|india|pakistan|bangladesh|philippines|indonesia|"
     r"malaysia|vietnam|thailand|singapore|japan|south korea|israel|brazil|"
     r"mexico|argentina|colombia|chile|peru|nigeria|kenya|ghana|egypt|morocco|"
-    r"south africa|middle east|gcc|dubai|uae)\b",
+    r"south africa|middle east|gcc|dubai|uae|lagos)\b",
     re.I,
 )
 
 #: The regions that actually include the candidate's own region (West Africa).
 #: A gate naming one of these is open to them rather than closed; Europe alone,
 #: the Americas, APAC and the Gulf are not on the list even though all of them
-#: are `region_gated`. This is the vocabulary `scope_rank` triages by.
+#: are `region_gated`. This is the vocabulary `scope_rank` triages by. `lagos`
+#: is the candidate's own city: a posting whose location string is just "Lagos"
+#: would otherwise read as "no restriction stated", which is the wrong way to
+#: be wrong. (There is a town of that name in Portugal; in a location string it
+#: is Nigeria almost every time, and the evidence is kept so the rare miss is
+#: visible on the row.)
 _HOME_REGION = re.compile(
-    r"\b(africa|sub[- ]saharan|west africa|emea|mea|nigeria|ecowas)\b",
+    r"\b(africa|sub[- ]saharan|west africa|emea|mea|nigeria|ecowas|lagos)\b",
     re.I,
 )
 
@@ -241,6 +246,8 @@ _CASES: list[tuple[str | None, str | None, str]] = [
     ("EMEA", None, REGION_GATED),
     ("Remote, EMEA", None, REGION_GATED),
     ("Sub-Saharan Africa", None, REGION_GATED),
+    ("Lagos, Nigeria", None, REGION_GATED),
+    ("Lagos", None, REGION_GATED),      # the candidate's own city
 ]
 
 #: (scope, evidence, rank) - the order the digest triages leads by.
@@ -251,6 +258,7 @@ _RANK_CASES: list[tuple[str, str | None, int]] = [
     (REGION_GATED, "Africa", 1),
     (REGION_GATED, "Sub-Saharan Africa", 1),
     (REGION_GATED, "Lagos, Nigeria", 1),
+    (REGION_GATED, "Lagos", 1),
     (UNKNOWN, None, 2),
     (REGION_GATED, "Europe, USA, Canada, APAC", 3),
     (REGION_GATED, "Remote, AMER", 3),
@@ -268,6 +276,7 @@ _COVER_CASES: list[tuple[str, str | None, bool]] = [
     (REGION_GATED, "MEA", True),
     (REGION_GATED, "Africa", True),
     (REGION_GATED, "West Africa", True),
+    (REGION_GATED, "Lagos", True),
     (REGION_GATED, "Europe", False),
     (REGION_GATED, "APAC", False),
     (REGION_GATED, "Middle East", False),
