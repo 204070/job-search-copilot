@@ -68,6 +68,19 @@
 
 ## Learnings (conversion, content, what works)
 
+- **A derived view must not hold state (18/10).** The digest could remind but
+  never clear: what the person had already dealt with lived in nobody's records,
+  so the same items reappeared. Two gaps of the same shape were behind it. The
+  question bank's `status` only moves when something moves it — `record` writes
+  `draft`, and filling a form and submitting one both left it there, so an
+  answer an employer had received read like one typed five minutes earlier
+  (`approve --from-app N` is the missing half, and flags text changed since it
+  was sent) — and a lead the person had read and rejected had no command at all,
+  only a SQL statement (`dismiss --job N --reason "..."`). The digest is now one
+  living file, rewritten in place, with section 1 showing what changed since the
+  previous rewrite, computed from the `Refreshed:` line the file itself carried.
+  The rule: if an action has no command, the action never gets recorded, and a
+  dated log of a derived page is redundant the moment the next one exists.
 - **The resume is a floor, not a ceiling (18/10).** A technical answer drafted
   from `resume.pdf` alone seriously undersold the candidate: the resume omits
   Cassandra, ClickHouse, Heroku/Vercel/Netlify/Cloudflare, bare-metal with
