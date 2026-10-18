@@ -55,6 +55,21 @@ far. ATS forms keep no server-side draft, so this is lost work, not a refresh.
 - Version note: v1.8.8 / extension v1.0.24 were current; v2.0.0 / v1.0.25
   were offered as updates. Worth applying before blaming the workflow.
 
+## Reuse: recipes for now, a plugin only if filling becomes the bottleneck
+
+Decided 18/10/2026. Reuse belongs on the side we control, and that side already
+has it (`review submitted`, `review reply`, the `FOLLOW_UP_AFTER_DAYS` clock).
+The browser side stays case by case, because we do not control those forms.
+
+OpenCLI does have the extension point if that changes: `opencli plugin create
+<name>` scaffolds a plugin, `plugin install github:user/repo` installs one, and
+`adapter eject <site>` copies one of the 1568 official site CLIs into
+`~/.opencli/clis/` to edit locally (`adapter status` reports local overrides
+against the official baseline). None of the 1568 is Greenhouse, Lever, Ashby or
+Workday, so a Greenhouse plugin would be new work rather than a tweak, and every
+employer's board adds its own custom questions on top of the form anyway. Until
+the recipe is genuinely the slow part, `_docs/greenhouse.md` is the mechanism.
+
 ## Ashby field ids change per page load
 
 Ashby regenerates the UUID prefix of each field wrapper on every render, e.g.
