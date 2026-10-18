@@ -132,8 +132,12 @@ Before drafting:
   row scores 0. Read the employer's own posting as syndicated on the job boards
   and store it under `jobs.metadata.employer_ad`, leaving `raw_text` as scraped
   (a re-scan overwrites `raw_text`; the metadata copy is the record).
-- **Match the From address to the attached resume.** The mail and the PDF must
-  agree, same rule as the form email field.
+- **The From address is the user's choice, so record which one was used.**
+  Default to the address printed on the attached resume, but the user may send
+  from another (their Gmail has gone out on both form and email applications).
+  Write it onto the application row: the reply lands wherever it was sent from,
+  and a mail from an address the CV does not print is a mismatch a screener can
+  see side by side.
 - **Read the ad's own instructions**: some name the subject line ("use the job
   position as the subject") or ask for a cover letter. Follow them literally.
 - Recon the company before writing. A short, specific paragraph beats a long
@@ -152,6 +156,23 @@ Record it the same way as a form application: the application row at
 `ready_to_apply` with `method = 'email'`, the address and deadline in
 `metadata`, and a `status_change` event. The reply lands in the user's mailbox,
 not a portal, so the day-7 chase clock applies to the mailbox.
+
+The pitch belongs in the bank too. Record the wording that went out as the
+answer, with the emphasis rule in `--reasoning`:
+
+```bash
+python3 -m db.tools.questions record --key application_email_pitch \
+    --question "Write a short application email introducing yourself for this role" \
+    --kind application --answer "<what was sent>" --reasoning "<why this emphasis>" \
+    --job-id <id> --application-id <id>
+```
+
+Store what was actually sent rather than a skeleton with placeholders: the
+derived state compares the answer against the instance ledger, so a template
+canonical reads `revised` forever and raises a warning that can never clear.
+The reusable part is the shape and the emphasis rule, and `--reasoning` is
+where that goes. If the user rewrites it in their own voice, that rewrite is
+the answer.
 
 ## Failure modes (stop, don't improvise)
 
@@ -202,8 +223,14 @@ mismatch, stale listing, etc.) **before or during fill**:
 Flip the application row to `applied` (+ `applied_at`, `applied` event) and
 distill: the general learning goes to `MEMORY.md`, the ATS- or
 tooling-specific correction to `_docs/<ats>.md` or `_docs/tooling.md`.
-Facts about the user that surfaced go to `artifacts/profile.jsonc` — never
-into committed files.
+
+Facts and phrasings part company here. A **fact** about the user goes to
+`artifacts/profile.jsonc`, never into committed files, and it goes in atomic:
+`experience.facets` is a list of true statements, not one chosen emphasis. The
+**phrasing** for this role goes to the question bank, because emphasis is a
+per-application decision. PCI DSS leading on a regulated payments employer is
+not a commitment to lead with it on a dev-tools one, so the bank records what
+this role got while the profile keeps every facet available to the next.
 
 Then close the bank loop:
 
