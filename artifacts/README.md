@@ -19,6 +19,7 @@ Scripts and workflows expect these filenames:
 | `generated/` | Machine-built files (e.g. generated resume PDFs) — superseded by hand-tuned originals unless noted |
 | `faqs/` | **Generated** interview/application Q&A (`application-faq.md`, `technical-faq.md`) — rendered from the question bank by `python3 -m db.tools.questions digest`; edit the bank with `record`, not these files |
 | `review.md` | **Generated** decision queue — one living file, rewritten in place by `python3 -m db.tools.review`. Read section 1 for what changed since last time; close items with the commands it prints rather than editing the text |
+| `applications/` | One file per application you are drafting or have sent: `<date>-<company>-<role>.md` — the email or form draft, the company recon, and the table of which claim came from where. Written before anything is submitted, kept after, so nothing is reconstructed from memory later |
 
 Get started by copying the placeholders:
 

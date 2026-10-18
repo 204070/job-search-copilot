@@ -22,7 +22,10 @@
   enterprise production — keep it general when writing answers.
 - **Eligibility:** `jobs.region_scope` (worldwide / us_only / region_gated /
   unknown) tags where a posting says it will hire; `us_only` is the only real
-  bar. Detail: `_docs/scanning.md` → "Region scope".
+  bar. A `region_gated` list can *include* you (EMEA, MEA, Africa) or exclude
+  you (Europe alone, AMER, APAC, the Gulf), so triage order reads the evidence,
+  not just the tag: worldwide → covering region → unknown → excluding list →
+  us_only. Detail: `_docs/scanning.md` → "Region scope".
 - **Identity facts:** `artifacts/profile.jsonc` — read before drafting/filling.
 - **Question bank:** `db/jobs.db` (`questions` + `question_instances`) behind
   `python3 -m db.tools.questions` — `lookup` before filling, `record` at
@@ -150,6 +153,31 @@
   (profile accepts ET afternoons). A list mixing regions ("Europe, USA, Canada,
   APAC") is `region_gated`, not `us_only`. Bare US state names ("Kansas") DO
   count; two-letter codes are skipped (DE/IN/CA collide with countries).
+- **A `region_gated` list can include you or exclude you (18/10).** The tag
+  alone cannot say which, so triage reads the evidence phrase: EMEA, MEA and
+  Africa name a region that includes West Africa and sort *above* `unknown`;
+  Europe alone, AMER, APAC and the Gulf sort below it. Board abbreviations
+  (AMER, EMEA, APAC, MEA) are location strings in their own right and were
+  missing, so rows like "Remote, AMER" read as "no restriction stated".
+  `covers_home()` + `scope_rank()` are the single home for that vocabulary; the
+  scanner report and the digest both call them, so they cannot drift.
+- **A bookmark stub can make a real job unscorable (18/10).** One X bookmark
+  carried three role titles, an address and a close date and nothing else: score
+  0, scope `unknown`, while the employer's own ad named the stack, the level and
+  the location. Recover the ad and store it under `jobs.metadata.employer_ad`,
+  leaving `raw_text` as scraped (a re-scan overwrites `raw_text`), so the row
+  keeps its provenance and can be re-read. This is why the digest's score-0
+  table orders newest first, and why it drops any row that already has an
+  application: a close date rides on a new posting, and a score of 0 carries no
+  ordering information at all.
+- **Email applications are a second channel (18/10).** Some postings name an
+  address instead of a form ("send your CV to ..."), which skips the whole fill
+  runbook: the work is the draft plus the checks around it (address on the
+  employer's own domain, real ad recovered, From address matching the attached
+  resume, the ad's own subject-line instruction followed). Draft lives in
+  `artifacts/applications/<date>-<company>-<role>.md`, application row
+  `method='email'`. The reply lands in the mailbox, so the day-7 chase clock
+  applies to the mailbox. Section in `_docs/team/application-specialist.md`.
 - **`upsert_job` refreshes only `last_seen_at`** for a job it already has, so
   any improvement to an extractor reaches nothing stored earlier. Derivation
   must be a re-runnable pass: `classify` (region), `enrich_companies` (RSS

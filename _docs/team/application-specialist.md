@@ -116,6 +116,43 @@ Narrate the full form state as a table — field, value, source
 You never click Submit. You never touch the captcha except to point at it.
 Narrating "I think it's ready" without the table is not a handover.
 
+## Email applications (no ATS form)
+
+Some postings name an address instead of a form ("send your CV to ..."). Phases
+1 to 5 do not apply: there is nothing to fill and no handover table, so the
+whole job is the draft and the checks around it.
+
+Before drafting:
+
+- **Confirm the address is the employer's own.** Resolve the domain and check
+  where it lands; a domain that redirects to the company's corporate site is
+  theirs, an address that exists only inside an aggregator's repost is not.
+- **Recover the real ad.** Rows captured from a social bookmark often carry a
+  stub with no stack, no location and no requirements, which is also why such a
+  row scores 0. Read the employer's own posting as syndicated on the job boards
+  and store it under `jobs.metadata.employer_ad`, leaving `raw_text` as scraped
+  (a re-scan overwrites `raw_text`; the metadata copy is the record).
+- **Match the From address to the attached resume.** The mail and the PDF must
+  agree, same rule as the form email field.
+- **Read the ad's own instructions**: some name the subject line ("use the job
+  position as the subject") or ask for a cover letter. Follow them literally.
+- Recon the company before writing. A short, specific paragraph beats a long
+  general one, and the same research is the interview prep. Keep the sources in
+  the draft file.
+- **Do not claim the stack the ad names unless the verified surface backs it.**
+  An OR list (C#/Node/Java/Python) is satisfied by one true leg, so the email
+  names the leg that is real and stays silent on the rest. Say in the draft file
+  what was left out and why, so the omission is a decision, not an oversight.
+
+Draft to `artifacts/applications/<date>-<company>-<role>.md`: the header table
+(to, subject, attachment, From, deadline, channel), the body, a table of which
+claim came from where, and what is still theirs (attach, send).
+
+Record it the same way as a form application: the application row at
+`ready_to_apply` with `method = 'email'`, the address and deadline in
+`metadata`, and a `status_change` event. The reply lands in the user's mailbox,
+not a portal, so the day-7 chase clock applies to the mailbox.
+
 ## Failure modes (stop, don't improvise)
 
 - A required human-only step (captcha, submit, a signature) → stop at the
@@ -145,10 +182,14 @@ mismatch, stale listing, etc.) **before or during fill**:
 
 ## Job vs Application status flows
 
-- **`jobs`** (posting lifecycle): `bookmarked` → `ready_to_apply` → `applied`
-  → `archived`. On submit, **both** job and application rows become
-  `applied`. `archived` is only for terminal outcomes (rejected, withdrawn,
-  or deliberately closed after a period with no response).
+- **`jobs`** (posting lifecycle): `bookmarked` → `applied` → `archived`. The
+  posting only tracks whether it is on the shopping list, whether it was
+  applied to, and whether it is closed. It does **not** move to
+  `ready_to_apply` while a fill is in progress: the `applications` row is what
+  says an application is under way, so a fill cannot be orphaned by a posting
+  status. On submit, **both** job and application rows become `applied`.
+  `archived` is only for terminal outcomes (rejected, withdrawn, or
+  deliberately closed after a period with no response).
 - **`applications`** (submission pipeline): `ready_to_apply` → `applied`
   (+`applied_at`) → `screening` → `interviewing` → `offer` →
   `rejected`/`withdrawn` → `archived`.
