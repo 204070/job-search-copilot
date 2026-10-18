@@ -8,6 +8,7 @@ this week. This tool reads the database and produces that page:
     python3 -m db.tools.review follow-up --app 3 --in-days 7
     python3 -m db.tools.review resolve --event 4
     python3 -m db.tools.review dismiss --job 616 --reason "posting closed"
+    python3 -m db.tools.review todo --add "create the resume variant"
 
 One living file, rewritten in place, not a dated log. There is nothing to
 accumulate: the digest holds no state, and a stale item leaves the page by
@@ -16,17 +17,24 @@ retired), not by being edited out of the text. Hand edits would be lost on
 the next rewrite, which is why every actionable line carries the command that
 closes it. The database is the memory; this page is a view.
 
+Almost everything the page asks for is derived from a row, so it cannot drift.
+One thing is not: an action with no job, application or question behind it
+("create the resume variant") has nothing to be derived from, and would live in
+a chat scrollback without a home. That is what `todos` is for. A todo renders
+in section 2 with the command that closes it and disappears when that runs, so
+the no-state rule survives: the row is the state, the page is still a view.
+
 The file is private (gitignored, via `artifacts/`): it names employers, and
 this repo is public.
 
 Sections are ordered by what is most likely to be expensive to miss:
 
 1. Since you last looked   what changed since the previous rewrite
-2. Needs you now           follow-ups due, applications filled but not sent
+2. Needs you now           your own open actions, follow-ups due, unsent forms
 3. Applications            every application with its age and next action
 4. Next roles              bookmarked postings, best-ranked first
 5. Pipeline health         counts that say whether the ranking can be trusted
-6. Question bank           answers still awaiting a human read
+6. Question bank           what the bank knows, and what changed since it went out
 
 Section 1 is the one that makes reading this "from time to time" cheap: it is
 computed against the `Refreshed:` line this file carried last time, so it needs
@@ -282,6 +290,16 @@ def _table(header: list[str], rows: list[list[str]]) -> list[str]:
     return out
 
 
+def todo_owner_label(owner: str | None) -> str:
+    """Who acts on a todo, in the words the digest uses.
+
+    Anything that is not the user's own is the agent's: an unrecognised owner
+    is a row to fix, and defaulting it to work the agent will notice is safer
+    than defaulting it to work the user may not.
+    """
+    return "Yours to do" if owner == "user" else "Agent to do"
+
+
 def section_since(conn: sqlite3.Connection, since: str | None,
                   limit: int = 8) -> list[str]:
     """Section 1: what changed since the previous rewrite.
@@ -351,6 +369,18 @@ def section_needs_you(conn, apps, today: date) -> list[str]:
     out = ["## 2. Needs you now", ""]
     items: list[str] = []
 
+    # The one item here that is not derived from a row elsewhere: an action with
+    # no job, application or question behind it. It has nowhere else to appear,
+    # so it leads, and it leaves when the closing command records a close.
+    for row in conn.execute(
+            "SELECT id, text, owner, created_at, context FROM open_todos"):
+        added = (row["created_at"] or "")[:10]
+        when = f" (added {added})" if added else ""
+        why = f" {row['context']}" if row["context"] else ""
+        items.append(
+            f"- [ ] **{todo_owner_label(row['owner'])}**: {row['text']}{when}."
+            f"{why} `python3 -m db.tools.review todo --close {row['id']}` once done.")
+
     for row in apps:
         status = row["app_status"]
         due = row["due_follow_up"]
@@ -372,17 +402,11 @@ def section_needs_you(conn, apps, today: date) -> list[str]:
                     f"on record. Schedule it with "
                     f"`python3 -m db.tools.review follow-up --app {row['app_id']} --in-days 1`.")
 
-    revised = conn.execute(
-        "SELECT COUNT(*) AS n FROM questions_with_frequency WHERE state = 'revised'"
-    ).fetchone()["n"]
-    if revised:
-        items.append(
-            f"- [ ] **Read back {revised} bank answer(s)**: the stored text has "
-            f"changed since a form received it, so the current wording has not "
-            f"been read in this form. "
-            f"`python3 -m db.tools.questions lookup \"<wording>\"` shows it beside "
-            f"what was sent.")
-
+    # A `revised` bank answer is deliberately NOT a task here. Wording is
+    # chosen per application, so the stored text differing from what one
+    # employer received is the normal state of the bank, not a decision
+    # outstanding. What carries forward is the reasoning, which `lookup` prints
+    # beside the sent text; section 6 reports the count and says so.
     out += items or ["(nothing needs a decision today)"]
     out.append("")
     return out
@@ -527,6 +551,16 @@ def section_questions(conn) -> list[str]:
                "`unsent` has never been on a submitted application, `sent` is "
                "exactly what an employer received, and `revised` went out and has "
                "changed since.")
+    revised = _count(conn, "SELECT COUNT(*) FROM questions_with_frequency"
+                           " WHERE state = 'revised' AND retired_at IS NULL")
+    if revised:
+        out.append("")
+        out.append(f"{revised} row(s) read `revised`, which is the expected state "
+                   "of the bank rather than a task: an answer is worded per "
+                   "application, so stored text differing from what one employer "
+                   "received is normal and needs no decision. What carries forward "
+                   "is the reasoning, which `python3 -m db.tools.questions lookup` "
+                   "prints as `WHY` beside the text that was sent.")
     out.append("")
     rows = conn.execute(
         "SELECT id, question_key, kind, times_asked, state,"
@@ -574,6 +608,8 @@ def build_digest(conn: sqlite3.Connection, today: date | None = None,
         "python3 -m db.tools.review                                # rewrite this file",
         "python3 -m db.tools.review follow-up --app 4 --in-days 7  # schedule a chase",
         "python3 -m db.tools.review resolve --event 12             # close a chase",
+        "python3 -m db.tools.review todo --add \"...\"               # remember an action",
+        "python3 -m db.tools.review todo --close 3                 # close one",
         "python3 -m db.tools.review dismiss --job 616 --reason \"...\"   # drop a lead",
         "python3 -m db.tools.questions retire --key KEY            # set an answer aside",
         "```",
@@ -614,9 +650,13 @@ def cmd_digest(conn: sqlite3.Connection, args: argparse.Namespace) -> int:
                                 today.isoformat()).startswith(("submit", "consider",
                                                                 "follow up"))]
     moved = "since " + since.replace("T", " ").replace("Z", " UTC") if since else "first run"
-    print(f"rewrote {path}  ({len(apps)} application(s), {len(wait)} needing action, {moved})")
+    open_todos = _count(conn, "SELECT COUNT(*) FROM open_todos")
+    print(f"rewrote {path}  ({len(apps)} application(s), {len(wait)} needing "
+          f"action, {open_todos} todo(s) open, {moved})")
     for row in wait:
         print(f"  #{row['app_id']} {row['company']}: {row['title']}")
+    for row in conn.execute("SELECT id, text, owner FROM open_todos"):
+        print(f"  todo #{row['id']} [{row['owner']}] {row['text']}")
     return 0
 
 
@@ -684,6 +724,53 @@ def cmd_resolve(conn: sqlite3.Connection, args: argparse.Namespace) -> int:
     conn.commit()
     print(f"closed follow-up #{args.event} (application #{row['application_id']}, "
           f"was due {row['scheduled_for']})")
+    return 0
+
+
+def cmd_todo(conn: sqlite3.Connection, args: argparse.Namespace) -> int:
+    """Add, list or close an open action that has no row of its own.
+
+    The digest's one bit of stored state. Every other line on the page is
+    derived from something that exists for its own sake; a `todos` row exists
+    only to be remembered, and closing it is the whole lifecycle.
+    """
+    if args.add:
+        cursor = conn.execute(
+            "INSERT INTO todos (text, owner, context) VALUES (?, ?, ?)",
+            (args.add, args.owner, args.context))
+        conn.commit()
+        print(f"added todo #{cursor.lastrowid}  ({todo_owner_label(args.owner)})")
+        print(f"  {args.add}")
+        if args.context:
+            print(f"  context: {args.context}")
+        return 0
+
+    if args.close is not None:
+        row = conn.execute("SELECT id, text, closed_at FROM todos WHERE id = ?",
+                           (args.close,)).fetchone()
+        if row is None:
+            print(f"no todo #{args.close}")
+            return 1
+        if row["closed_at"]:
+            print(f"todo #{args.close} was already closed on {row['closed_at'][:10]}")
+            return 1
+        conn.execute(
+            "UPDATE todos SET closed_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')"
+            " WHERE id = ?", (args.close,))
+        conn.commit()
+        print(f"closed todo #{args.close}: {row['text']}")
+        return 0
+
+    rows = conn.execute("SELECT id, text, owner, context, created_at"
+                        " FROM open_todos").fetchall()
+    if not rows:
+        print("no open todos")
+        return 0
+    for row in rows:
+        print(f"#{row['id']}  [{row['owner']}]  {row['text']}"
+              f"  (added {row['created_at'][:10]})")
+        if row["context"]:
+            print(f"      {row['context']}")
     return 0
 
 
@@ -762,7 +849,24 @@ def cmd_selftest() -> int:
             failures += 1
             print(f"FAIL  recency: {why}")
 
-    total = len(cases) + 2 + len(rank_cases) + 1 + len(order_cases)
+    # Who acts on a todo: the user's own work reads as theirs, and anything else
+    # falls to the agent rather than defaulting work onto the user.
+    label_cases = [
+        ("user", "Yours to do"),
+        ("agent", "Agent to do"),
+        (None, "Agent to do"),
+        ("", "Agent to do"),
+        ("someone", "Agent to do"),
+    ]
+    for owner, expected in label_cases:
+        got = todo_owner_label(owner)
+        if got != expected:
+            failures += 1
+            print(f"FAIL  todo_owner_label({owner!r}) = {got!r}, "
+                  f"expected {expected!r}")
+
+    total = (len(cases) + 2 + len(rank_cases) + 1 + len(order_cases)
+             + len(label_cases))
     print(f"{total - failures}/{total} cases pass")
     return 1 if failures else 0
 
@@ -797,6 +901,15 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--job", type=int, required=True, help="jobs id")
     p.add_argument("--reason", required=True, help="why it is out of the pool")
     p.set_defaults(func=cmd_dismiss)
+
+    p = sub.add_parser("todo",
+                       help="your own open actions, which have no row behind them")
+    p.add_argument("--add", metavar="TEXT", help="remember an action")
+    p.add_argument("--owner", choices=("user", "agent"), default="user",
+                   help="who acts on it (default: user)")
+    p.add_argument("--context", help="where it came from, why it is wanted")
+    p.add_argument("--close", type=int, metavar="ID", help="close a todo by id")
+    p.set_defaults(func=cmd_todo)
 
     p = sub.add_parser("selftest", help="check the decision logic on fixed cases")
     p.set_defaults(func=lambda conn, args: cmd_selftest())

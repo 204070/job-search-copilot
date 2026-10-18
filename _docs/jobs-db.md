@@ -141,9 +141,9 @@ next reader learns from it.
 
 ## Review digest (`db/tools/review.py`)
 
-The decision queue: what changed since you last looked, follow-ups due,
-applications with their age and next action, the next roles worth a look,
-pipeline health, and the question bank's outstanding drafts.
+The decision queue: your own open actions, what changed since you last looked,
+follow-ups due, applications with their age and next action, the next roles
+worth a look, pipeline health, and what the question bank now knows.
 
 It is **one living file**, `artifacts/review.md`, rewritten in place. There are
 no dated copies, because there is nothing to accumulate: the digest holds no
@@ -152,6 +152,13 @@ database, never because it was edited out of the text, and hand edits are lost
 on the next rewrite. Every actionable line therefore carries the command that
 closes it. The file is private (gitignored), because it names employers and
 this repo is public.
+
+Almost every line is derived from a row that exists for its own sake, so it
+cannot drift. The exception is an action with no job, application or question
+behind it ("create the resume variant"): nothing to derive it from, and a chat
+scrollback is not a memory. Those live in `todos`, render as the leading
+checkboxes in section 2, and disappear when closed. The page still holds
+nothing; the row does.
 
 Section 1 is the point of the format: it is computed against the `Refreshed:`
 line the file carried last time, so reading it "from time to time" costs one
@@ -164,10 +171,17 @@ section instead of six, and the marker needs no table of its own.
 | `follow-up --app 3 --in-days 7 [--note "..."]` | Schedule a chase: an `application_events` row with `scheduled_for` |
 | `resolve --event 4 [--note "..."]` | Mark a scheduled follow-up done (`metadata.done`, `done_at`) |
 | `dismiss --job 616 --reason "posting closed"` | Archive a lead, recording `metadata.reason_for_archive` |
+| `todo --add "..." [--owner user\|agent] [--context "..."]` | Remember an action that has no row behind it |
+| `todo` / `todo --close 3` | List the open ones, or close one |
 | `selftest` | Check the follow-up decision logic on fixed cases |
 
 The follow-up clock is 7 days after submission with no reply on record; only
 the suggestion is automatic, scheduling stays an explicit command.
+
+A `revised` bank answer is reported in section 6 but is not a task. Wording is
+chosen per application, so the stored text differing from what one employer
+received is the normal state of the bank; what carries forward is `reasoning`,
+which `lookup` prints as `WHY` beside the text that went out.
 
 "Next roles" uses the same order as the scanner report
 (`scanner.eligibility.scope_rank`, shared so the two cannot drift): worldwide,
