@@ -27,6 +27,10 @@
 - **Question bank:** `db/jobs.db` (`questions` + `question_instances`) behind
   `python3 -m db.tools.questions` — `lookup` before filling, `record` at
   handover; `artifacts/faqs/*.md` are generated from it (`digest`).
+- **Review digest:** `python3 -m db.tools.review` writes
+  `logs/reviews/<date>.md` (private, gitignored): follow-ups due, applications,
+  next roles, pipeline health, question-bank drafts. Detail:
+  `_docs/jobs-db.md`.
 - **Current phase:** semi-automatic applications — agent drafts/fills, human
   reviews & submits. Runbook: `_docs/team/application-specialist.md`.
 - **Tool:** OpenCLI Browser Bridge drives my real Chrome (always
@@ -77,6 +81,19 @@
   Realtime websockets wired into NestJS. Ask at intake which of the employer's
   products the person has used before drafting, because it will not be in the
   resume.
+- **The score is a title gate, and the gate is a fixed list of phrasings
+  (18/10).** `scanner/keywords.py` scores 0 unless the TITLE matches one of nine
+  configured phrasings (`software engineer`, `full[- ]?stack`, `back[- ]?end`,
+  `platform engineer`, `devops|site reliability`, ...), then scores weighted
+  coverage of a 20-term `any` list. Measured on the live DB: 383 of 455
+  bookmarked postings score 0, the maximum anywhere is 45, and 104 score-0 rows
+  have titles that plainly name one of our roles (`Senior Frontend Engineer,
+  React/Typescript`, `SDK Engineer - Python`, `Cloud Security Engineer`,
+  `Senior Staff Software Engineer`). So the shortlist must be read by title, and
+  any "best fit" claim resting on `match_score` is not yet trustworthy. The `any`
+  list also predates the verified skills surface (no NestJS, Bun, ClickHouse,
+  Supabase, Azure/GCP, Ansible, Pulumi, Jenkins). Fixing the gate needs a
+  re-scoring pass, because `upsert_job` only refreshes `last_seen_at`.
 - **An ATS form has no draft.** A session tab that returns to `about:blank`
   loses every field. Fill in one pass and hand over for submission at once.
   Ids also regenerate per load on Ashby. Details: `_docs/tooling.md`.

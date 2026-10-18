@@ -118,6 +118,31 @@ flag with `--clear-promotes-to` rather than leaving `promotions` listing it
 forever. Put the reasoning for the reversal in the same `record` call so the
 next reader learns from it.
 
+## Review digest (`db/tools/review.py`)
+
+The decision queue, for reading every few days: follow-ups due, applications
+with their age and next action, the next roles worth a look, pipeline health,
+and the question bank's outstanding drafts.
+
+| Command | What it does |
+|---|---|
+| `python3 -m db.tools.review` | Write `logs/reviews/<date>.md` and print what needs action |
+| `follow-up --app 3 --in-days 7 [--note "..."]` | Schedule a chase: an `application_events` row with `scheduled_for` |
+| `resolve --event 4 [--note "..."]` | Mark a scheduled follow-up done (`metadata.done`, `done_at`) |
+| `selftest` | Check the follow-up decision logic on fixed cases |
+
+It is derived entirely from the DB, so it is regenerated, never maintained. It
+writes under `logs/`, which is gitignored: a digest names employers and this
+repo is public. The follow-up clock is 7 days after submission with no reply on
+record; only the suggestion is automatic, scheduling stays an explicit command.
+
+"Next roles" uses the same precedence as the scanner report (worldwide, unknown,
+region-gated, US-only), then score, and caps each employer at two rows so one
+company cannot fill the page. It applies the scanner's `MATCH_MIN_SCORE` default
+(15) as a floor and lets score-0 rows through only when the title plainly names
+one of our roles, which is where the scorer's blind spot is: the table below
+that shortlist reports how many postings read like a target role yet score 0.
+
 ## Conventions
 
 - Timestamps: ISO-8601 UTC text `2026-10-17T09:00:00Z` (`strftime('%Y-%m-%dT%H:%M:%SZ','now')` defaults).
