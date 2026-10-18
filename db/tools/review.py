@@ -369,8 +369,8 @@ def section_since(conn: sqlite3.Connection, since: str | None,
         (RELEVANT_FLOOR, since, limit),
     ).fetchall()
     events = conn.execute(
-        "SELECT e.application_id, e.event_type, e.to_status, e.summary,"
-        "       e.occurred_at, j.company, j.title"
+        "SELECT e.application_id, e.event_type, e.from_status, e.to_status,"
+        "       e.summary, e.occurred_at, j.company, j.title"
         "  FROM application_events e"
         "  JOIN applications a ON a.id = e.application_id"
         "  JOIN jobs j ON j.id = a.job_id"

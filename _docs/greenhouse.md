@@ -62,6 +62,14 @@ to one form — never canonical; each posting's lists differ.
 - The widget injects ~240 hidden `[role=option]` items (`li`, ids `iti-*`) →
   when hunting options for OTHER selects, exclude `!/^iti/`. A synthetic
   eval mousedown+click dies on those decoys.
+- **Filling the hidden iti search leaks.** `.iti__search-input` is off-screen and
+  the dropdown's `li` items sit in a fixed-position container (so `offsetParent`
+  is null and they read as invisible when they are fine). More importantly,
+  `fill` on the hidden search input delivers its keystrokes to whatever still
+  has focus: on 18/10 the text `Nigeria` was appended to the LinkedIn field,
+  which had been filled moments earlier (`...-ng` became `...-ngNigeria`), while
+  the search box received it too. Click a neutral element or fill a plain field
+  first, and read the previously filled field back afterwards.
 - "Toggle flyout" button clicks do nothing; focus/type/keys opens the menu.
 
 ## Adapting profile facts (worked example: gh_jid 6188234004, 17/10/2026)

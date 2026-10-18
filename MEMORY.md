@@ -84,6 +84,18 @@
 
 ## Learnings (conversion, content, what works)
 
+- **A pure-function selftest cannot see a broken query (18/10).** Section 1 of
+  the digest was rewritten to compare an event's `from_status` with its
+  `to_status`, and it crashed the entire build the first time a status event
+  landed in the window: the column was never added to the query's SELECT list,
+  so `row["from_status"]` raised `IndexError` inside the renderer. All 40
+  selftest cases passed the whole time, because they exercise the pure helpers
+  and never build a digest from rows. The lesson is not "write more tests": a
+  change to what a query RETURNS has to be exercised against a database, and the
+  cheapest proof is running the real command on real rows before believing it.
+  It surfaced only because the work was done, which is the argument for doing the
+  work in the tool rather than reasoning about the tool.
+
 - **An aggregator row is not evidence of where a posting hires (18/10).** Three
   of the six best-looking leads in one sitting had an empty `location` and were
   gated in fact: the employer's own posting said USA/Canada, a single country,
