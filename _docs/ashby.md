@@ -52,12 +52,15 @@ input + `Upload file` button) and can populate the system fields.
 follow-up form at the same company (#509, same day) dropped the tech textarea,
 added a required async/remote textarea and an optional `Twitter / X profile`,
 and turned the "where did you hear" radio set into a free-text input. Same
-employer, same ATS, different form: enumerate the fields every time.
+employer, same ATS, different form: enumerate the fields every time. Where they
+map: the async textarea became bank question #17, `Twitter / X profile` points
+at `profile.jsonc` `x`, and the free-text hear-about field takes the board that
+actually surfaced the posting rather than the radio set's catch-all.
 
 | field | control | value used |
 |---|---|---|
 | Name | `#_systemfield_name` text | profile `name` |
-| Email | `#_systemfield_email` email | profile `email` |
+| Email | `#_systemfield_email` email | profile `email`, which must match the address printed on the attached resume |
 | Resume | `#_systemfield_resume` file | `artifacts/resume.pdf` |
 | Passport Country | text | profile `location.country` |
 | Country of Residence | text | profile `location.country` |
@@ -105,10 +108,13 @@ employer, same ATS, different form: enumerate the fields every time.
   write a list of concurrency primitives as though they were production
   experience; say TypeScript is the strongest language and that Go is welcome.
 - Open source: check `https://api.github.com/users/<handle>/repos` before
-  answering. Point at real public repos; a fork is not a contribution. Do not
-  offer a small public repo as evidence of infrastructure depth — say what it
-  actually is (e.g. a small Pulumi example) and let it stand only where the
-  tooling itself is the point.
+  answering, then apply the person's own standard rather than a "something is
+  better than nothing" one. On 18/10 they struck a small public Pulumi repo out
+  of this answer because next to the rest of their experience it read as
+  padding, and they were right: this question is a claim about contribution, so
+  a trivial repository weakens the answer instead of filling it. State plainly
+  that upstream patches are absent, name only what stands on its own, and keep
+  the intent to contribute to one sentence.
 - Field ids change per page load (see `_docs/tooling.md`): prefer stable suffix
   selectors such as `label[for$="-labeled-radio-5"]`.
 

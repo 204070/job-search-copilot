@@ -94,6 +94,13 @@
   list also predates the verified skills surface (no NestJS, Bun, ClickHouse,
   Supabase, Azure/GCP, Ansible, Pulumi, Jenkins). Fixing the gate needs a
   re-scoring pass, because `upsert_job` only refreshes `last_seen_at`.
+- **Do not pad an open source answer with a trivial public repo (18/10).** The
+  person struck a small public Pulumi repository out of this answer: next to the
+  rest of their experience it read as padding, and the question is a claim about
+  contribution, so a weak repo weakens it. Say plainly that upstream patches are
+  absent and name only what stands on its own. The general rule: their own
+  standard for what represents them beats a "something is better than nothing"
+  reflex.
 - **An Ashby employer screens from its board index (18/10).** The board page
   lists every posting with its structured location, so eligibility for a whole
   company is one page read and the Location check becomes cheap enough to do
