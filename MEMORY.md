@@ -151,8 +151,8 @@
   it reports "not installed"; in-shell it works once
   `~/.local/share/vite-plus/bin` is on PATH.
 - Always check location + sponsorship before filling; archive early with `reason_for_archive` in job metadata.
-- Full semi-auto loop validated 17/10 (application #1, applied) and again on
-  18/10 through Ashby (application #3, applied): the runbook in
+- Full semi-auto loop validated 17/10 (application #1, applied) and twice more
+  on 18/10 through Ashby (applications #3 and #4, applied): the runbook in
   `_docs/team/application-specialist.md` is proven — form bypass → agent
   fill → base64 resume embed → human review + reCAPTCHA + Submit →
   confirmation page is the success signal. DB chain:
