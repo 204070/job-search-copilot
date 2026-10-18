@@ -84,6 +84,16 @@ _EPOCH = datetime.min.replace(tzinfo=timezone.utc)
 #: Statuses that mean the application is over.
 CLOSED_STATUSES = ("rejected", "withdrawn", "archived")
 
+#: Event types that mean the OTHER side made contact, which is what stops the
+#: day-7 chase clock. A `note` is our own bookkeeping ("recon done", "form
+#: filled in one pass") and a `follow_up` is our own chase, so neither belongs
+#: here: letting them count silenced the clock on exactly the applications that
+#: were documented well enough to have notes. Contact that moves no status goes
+#: in as a `reply` (`review reply`). Kept as one list so the SQL and the docs
+#: cannot disagree about what a signal is.
+SIGNAL_EVENT_TYPES = ("interview", "offer", "rejection", "reply")
+_SIGNAL_IN = ", ".join(f"'{event_type}'" for event_type in SIGNAL_EVENT_TYPES)
+
 #: Below this score a posting is only listed when its title plainly names one of
 #: our roles. Matches the scanner's own MATCH_MIN_SCORE default; a literal
 #: rather than a read, because this module only needs the scanner's gate
@@ -185,14 +195,13 @@ def follow_up_action(
 # --- queries ----------------------------------------------------------------
 
 
-APPLICATION_SQL = """
+APPLICATION_SQL = f"""
 SELECT a.id AS app_id, a.job_id, a.status AS app_status, a.applied_at,
        a.method, a.resume_variant, a.updated_at,
        j.title, j.company, j.region_scope, j.url, j.status AS job_status,
        (SELECT MAX(e.occurred_at) FROM application_events e
          WHERE e.application_id = a.id
-           AND e.event_type IN ('interview', 'offer', 'rejection', 'note',
-                                'follow_up')) AS last_signal,
+           AND e.event_type IN ({_SIGNAL_IN})) AS last_signal,
        (SELECT MIN(e.scheduled_for) FROM application_events e
          WHERE e.application_id = a.id AND e.event_type = 'follow_up'
            AND e.scheduled_for IS NOT NULL
@@ -389,8 +398,16 @@ def section_since(conn: sqlite3.Connection, since: str | None,
         out.append("")
     for e in events:
         note = f": {e['summary']}" if e["summary"] else ""
+        # Show the status move when there is one, and the event's own name when
+        # there is not, so a note never reads as a status change.
+        if e["event_type"] == "note":
+            move = "note"
+        elif e["from_status"] and e["from_status"] != e["to_status"]:
+            move = f"{e['from_status']} -> {e['to_status']}"
+        else:
+            move = e["to_status"] or e["event_type"]
         out.append(f"- **Application #{e['application_id']}** ({e['company']}): "
-                   f"{e['event_type']} -> {e['to_status'] or '-'}{note}")
+                   f"{move}{note}")
     for r in left_pool:
         out.append(f"- **Left the pool**: {r['company']} - {r['title']} "
                    f"(`{r['status']}`)")
@@ -450,7 +467,10 @@ def section_applications(apps, today: date) -> list[str]:
     """Section 3: every application, oldest decision first."""
     out = ["## 3. Applications", "",
            "`age` is days since submission; `last signal` is the most recent "
-           "reply, interview or note on record (not the submission itself).", ""]
+           "contact FROM the employer (an interview, an offer, a rejection, or "
+           "a reply that moves no status). Your own notes and the submission "
+           "itself do not count: the clock is for the applications nobody "
+           "answered.", ""]
     rows = []
     for row in apps:
         age = days_since(row["applied_at"], today)
@@ -775,6 +795,34 @@ def cmd_follow_up(conn: sqlite3.Connection, args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_reply(conn: sqlite3.Connection, args: argparse.Namespace) -> int:
+    """Record that the employer made contact.
+
+    The one event that stops the chase clock without moving a status, so it has
+    a command rather than a SQL statement: a reply that is never recorded is a
+    reminder looking at an application the employer has already answered.
+    """
+    row = conn.execute(
+        "SELECT a.id, a.status, j.company, j.title FROM applications a JOIN jobs j"
+        " ON j.id = a.job_id WHERE a.id = ?", (args.app,)).fetchone()
+    if row is None:
+        print(f"no application #{args.app}")
+        return 1
+    conn.execute(
+        "INSERT INTO application_events"
+        " (application_id, event_type, from_status, to_status, occurred_at,"
+        "  summary, details) VALUES (?, 'reply', ?, ?, ?, ?, ?)",
+        (args.app, row["status"], row["status"],
+         args.date or datetime.now(timezone.utc).strftime(
+             "%Y-%m-%dT%H:%M:%SZ"), args.summary, args.details))
+    conn.commit()
+    print(f"recorded a reply on application #{args.app} ({row['company']}), "
+          f"status {row['status']}")
+    print(f"  {args.summary}")
+    print("  the chase clock is stopped; a status move is a separate event")
+    return 0
+
+
 def cmd_resolve(conn: sqlite3.Connection, args: argparse.Namespace) -> int:
     row = conn.execute(
         "SELECT id, application_id, scheduled_for, summary FROM application_events"
@@ -960,8 +1008,20 @@ def cmd_selftest() -> int:
             print(f"FAIL  employer_cooldown: {why}\n"
                   f"      expected {expected!r}\n      got      {got!r}")
 
+    # What stops the chase clock: employer contact only. Our own notes and our
+    # own chases must never quiet it, because the applications most likely to be
+    # documented are the ones most likely to go unanswered.
+    for ours in ("note", "follow_up", "applied", "status_change", "withdrawal"):
+        if ours in SIGNAL_EVENT_TYPES:
+            failures += 1
+            print(f"FAIL  {ours!r} is our own action and cannot be a signal")
+    for theirs in ("interview", "offer", "rejection", "reply"):
+        if theirs not in SIGNAL_EVENT_TYPES:
+            failures += 1
+            print(f"FAIL  {theirs!r} is employer contact and must be a signal")
+
     total = (len(cases) + 2 + len(rank_cases) + 1 + len(order_cases)
-             + len(label_cases) + len(cool_cases))
+             + len(label_cases) + len(cool_cases) + len(SIGNAL_EVENT_TYPES))
     print(f"{total - failures}/{total} cases pass")
     return 1 if failures else 0
 
@@ -986,6 +1046,13 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--in-days", dest="in_days", type=int, default=1)
     p.add_argument("--note", help="what the chase is for")
     p.set_defaults(func=cmd_follow_up)
+
+    p = sub.add_parser("reply", help="record contact from the employer")
+    p.add_argument("--app", type=int, required=True, help="application id")
+    p.add_argument("--summary", required=True, help="what they said")
+    p.add_argument("--details", help="the longer version")
+    p.add_argument("--date", help="when it arrived (default: now)")
+    p.set_defaults(func=cmd_reply)
 
     p = sub.add_parser("resolve", help="mark a scheduled follow-up as done")
     p.add_argument("--event", type=int, required=True, help="application_events id")

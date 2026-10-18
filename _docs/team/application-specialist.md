@@ -157,6 +157,12 @@ Record it the same way as a form application: the application row at
 `metadata`, and a `status_change` event. The reply lands in the user's mailbox,
 not a portal, so the day-7 chase clock applies to the mailbox.
 
+When something does arrive, record it: `python3 -m db.tools.review reply --app N
+--summary "what they said"` (add `--details` for the longer version, `--date` if
+it did not arrive today). That is the event that stops the chase clock. A `note`
+is our own bookkeeping and deliberately does not, so a recruiter reply written
+as a note leaves the digest chasing an application the employer has answered.
+
 The pitch belongs in the bank too. Record the wording that went out as the
 answer, with the emphasis rule in `--reasoning`:
 

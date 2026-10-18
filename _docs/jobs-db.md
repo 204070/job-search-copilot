@@ -169,14 +169,20 @@ section instead of six, and the marker needs no table of its own.
 | `python3 -m db.tools.review` | Rewrite `artifacts/review.md` and print what needs action |
 | `digest --out PATH \| --stdout` | Write somewhere else, or print instead |
 | `follow-up --app 3 --in-days 7 [--note "..."]` | Schedule a chase: an `application_events` row with `scheduled_for` |
+| `reply --app 6 --summary "..." [--details "..."] [--date ISO]` | Record contact FROM the employer that moves no status; this is what stops the chase clock |
 | `resolve --event 4 [--note "..."]` | Mark a scheduled follow-up done (`metadata.done`, `done_at`) |
 | `dismiss --job 616 --reason "posting closed"` | Archive a lead, recording `metadata.reason_for_archive` |
 | `todo --add "..." [--owner user\|agent] [--context "..."]` | Remember an action that has no row behind it |
 | `todo` / `todo --close 3` | List the open ones, or close one |
 | `selftest` | Check the follow-up decision logic on fixed cases |
 
-The follow-up clock is 7 days after submission with no reply on record; only
-the suggestion is automatic, scheduling stays an explicit command.
+The follow-up clock is 7 days after submission with no employer contact on
+record; only the suggestion is automatic, scheduling stays an explicit command.
+"Contact" is one list, `SIGNAL_EVENT_TYPES` in `db/tools/review.py`:
+`interview`, `offer`, `rejection`, `reply`. Our own `note` ("recon done",
+"form filled in one pass") and our own `follow_up` chase are NOT contact, so
+neither stops the clock. Before `reply` existed they did, which meant the better
+an application was documented the more reliably its chase went quiet.
 
 A `revised` bank answer is reported in section 6 but is not a task. Wording is
 chosen per application, so the stored text differing from what one employer

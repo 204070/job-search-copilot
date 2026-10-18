@@ -295,3 +295,24 @@
   cannot be picked at any spelling. The field was optional, the resume carried
   the education, and saying so was better than substituting a school that is not
   theirs.
+- **Our own bookkeeping must never silence a reminder (18/10).** The day-7 chase
+  clock was suppressed by any `interview`, `offer`, `rejection`, `note` or
+  `follow_up` event, and two of those are OURS rather than theirs: a `note`
+  ("recon done", "form filled in one pass") and our own chase. The signature is
+  worth remembering, because it failed exactly where the work was best: the
+  better an application was documented, the more reliably its chase went quiet,
+  and a freshly submitted one read "no action (a reply is on record)" with
+  nobody having replied. One list now defines contact (`SIGNAL_EVENT_TYPES` in
+  `db/tools/review.py`), `reply` carries contact that moves no status, and
+  `review reply` is the command that writes it, because an action with no
+  command is an action that never gets recorded.
+- **A salary figure belongs to the person and can move an order of magnitude at
+  submit time (18/10).** The prepared form carried the bank's
+  $180,000-$220,000; they replaced it with $35,000-$50,000 on their own reading
+  that the role is remote, and submitted. The process worked (the figure was
+  handed over as theirs to confirm), and the lesson is what to keep: the sent
+  figure goes into the instance ledger, the canonical stays a *stance*, and the
+  row then reads `revised`, which is honest rather than broken. Still open, and
+  worth asking again: whether remote roles are priced against the local market
+  or against the employer's own published band, because a US employer's band for
+  comparable work sat an order of magnitude above what went out.
