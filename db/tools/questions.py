@@ -7,6 +7,7 @@
         --application-id <id> --required                      # after you fill
     python3 -m db.tools.questions frequency                    # what recurs
     python3 -m db.tools.questions promotions                   # facts -> profile.jsonc
+    python3 -m db.tools.questions retire --key <slug>           # never reuse this one
     python3 -m db.tools.questions digest --kind application    # regenerate the FAQ
 
 Two layers, one source of truth:
@@ -20,6 +21,12 @@ Two layers, one source of truth:
 "Frequently asked" is therefore a COUNT over instances, never a judgement
 call: `lookup` finds what has been seen before, `frequency` ranks it, and a
 lookup MISS is the signal that a question is new.
+
+An answer's state is derived the same way, from the ledger, and is never
+stored: `unsent` if no submitted application has carried it, `sent` if the
+stored text is exactly what an employer received, `revised` if it went out and
+has changed since (so the current wording is unread), and `retired` if it has
+deliberately been set aside, the only state a human writes.
 
 The FAQ markdown in `artifacts/faqs/` is a GENERATED view of this bank (see
 `digest`) plus your own interview notes. Record here, then regenerate there;
@@ -37,6 +44,7 @@ import math
 import re
 import sqlite3
 import sys
+import tempfile
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))  # repo root
@@ -45,7 +53,9 @@ from db import connect  # noqa: E402
 
 KINDS = ("application", "technical")
 FIELD_TYPES = ("text", "combobox", "textarea", "checkbox", "other")
-STATUSES = ("draft", "approved", "retired")
+#: The answer's state. Derived on read by `questions_with_frequency` from the
+#: instance ledger, never stored, so nothing can set it from a command line.
+STATES = ("unsent", "sent", "revised", "retired")
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 FAQ_DIR = ROOT / "artifacts" / "faqs"
@@ -159,8 +169,8 @@ def record(conn: sqlite3.Connection, args: argparse.Namespace) -> int:
         aliases = _dedupe(aliases)
         cur = conn.execute(
             "INSERT INTO questions (question_key, kind, canonical_text, answer,"
-            " reasoning, answer_source, aliases, promotes_to, status, metadata)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            " reasoning, answer_source, aliases, promotes_to, metadata)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 key,
                 args.kind,
@@ -170,7 +180,6 @@ def record(conn: sqlite3.Connection, args: argparse.Namespace) -> int:
                 args.source or ("answer_bank" if args.answer else None),
                 json.dumps(aliases),
                 promotes_to,
-                args.status,
                 "{}",
             ),
         )
@@ -195,8 +204,6 @@ def record(conn: sqlite3.Connection, args: argparse.Namespace) -> int:
                 updates[field] = value
         if args.promotes_to is not None or args.clear_promotes_to:
             updates["promotes_to"] = promotes_to
-        if args.status != "draft":
-            updates["status"] = args.status
         assignments = ", ".join(f"{name} = ?" for name in updates)
         conn.execute(
             f"UPDATE questions SET {assignments}, updated_at = ? WHERE id = ?",
@@ -292,7 +299,7 @@ def _candidates(
             "SELECT f.*, bm25(questions_fts) AS rank"
             " FROM questions_fts JOIN questions_with_frequency f"
             " ON f.id = questions_fts.rowid"
-            " WHERE questions_fts MATCH ? AND f.status <> 'retired'"
+            " WHERE questions_fts MATCH ? AND f.retired_at IS NULL"
         )
         params: list[object] = [_fts_query(text)]
         if kind:
@@ -307,7 +314,7 @@ def _candidates(
 
     pattern = f"%{text.lower()}%"
     sql = (
-        "SELECT *, 0.0 AS rank FROM questions_with_frequency WHERE status <> 'retired'"
+        "SELECT *, 0.0 AS rank FROM questions_with_frequency WHERE retired_at IS NULL"
         " AND (lower(canonical_text) LIKE ? OR lower(coalesce(answer, '')) LIKE ?"
         " OR lower(aliases) LIKE ?)"
     )
@@ -349,21 +356,27 @@ def lookup(conn: sqlite3.Connection, text: str, kind: str | None, limit: int) ->
 
 
 def print_matches(rows: list, index: int | None = None) -> None:
-    """Render lookup results readably: answer, reasoning, frequency, evidence."""
+    """Render lookup results readably: answer, state, reasoning, frequency."""
     for i, row in enumerate(rows, 1):
         prefix = f"{index}. " if index is not None else ""
         label = f"{prefix}{row['canonical_text']}" if prefix else row["canonical_text"]
         print(f"{label}")
         print(
-            f"   `{row['question_key']}` | {row['kind']} | {row['status']} |"
+            f"   `{row['question_key']}` | {row['kind']} | {row['state']} |"
             f" asked {row['times_asked']}x | last {row['last_asked_at'] or 'never'}"
         )
+        if row["state"] == "revised":
+            print("   NOTE    sent as older text; the answer below has not been"
+                  " read in this form and differs from what went out:")
+            print(f"           sent: {_indent(row['last_sent_text'] or '')}")
         if row["answer_source"] and row["answer_source"].startswith("profile:"):
             print(f"   ANSWER  {row['answer_source']} (single source of truth)")
             if row["answer"]:
                 print(f"           bank copy: {_indent(row['answer'])}")
         elif row["answer"]:
             print(f"   ANSWER  {_indent(row['answer'])}")
+        elif row["state"] != "unsent":
+            print("   ANSWER  (none stored; filled per application, see WHY)")
         if row["reasoning"]:
             print(f"   WHY     {_indent(row['reasoning'])}")
         if row["promotes_to"] and not (
@@ -423,101 +436,55 @@ def cmd_lookup(conn: sqlite3.Connection, args: argparse.Namespace) -> int:
     return 0
 
 
-# --- frequency / promotions ------------------------------------------------
+# --- retire ----------------------------------------------------------------
 
 
-def _approval_note(conn: sqlite3.Connection, row) -> str:
-    """How the bank's current text compares with what the last form received.
+def cmd_retire(conn: sqlite3.Connection, args: argparse.Namespace) -> int:
+    """Set an answer aside, or bring it back into use.
 
-    Approval means a human has read this text. Submitting a form is the
-    strongest evidence of that, but only for the text the form actually
-    carried: an answer edited after the application went out has not been read
-    back, so it is worth naming even while it is approved.
+    The only state a human sets in this bank. Whether an answer has ever
+    reached an employer, and whether the stored text still matches what did, is
+    derived from the instance ledger, so submitting an application is the whole
+    of that bookkeeping. Retirement is different: it is a decision never to
+    reuse text, and nothing in the ledger implies one.
     """
-    if row["status"] == "retired":
-        return "retired, left alone"
-    if not row["answer"]:
-        if (row["answer_source"] or "").startswith("profile:"):
-            return "read from the profile, no literal text"
-        return "no answer text yet"
-    sent = conn.execute(
-        "SELECT answer_given FROM question_instances WHERE question_id = ?"
-        " ORDER BY asked_at DESC LIMIT 1",
-        (row["id"],),
-    ).fetchone()
-    if sent is None or not sent["answer_given"]:
-        return "never put on a form"
-    if sent["answer_given"].strip() == row["answer"].strip():
-        return "verbatim as sent"
-    return "REVISED after it was sent"
-
-
-def cmd_approve(conn: sqlite3.Connection, args: argparse.Namespace) -> int:
-    """Mark answers approved: read back, and safe to reuse without re-reading.
-
-    Three ways to select what to approve, because the honest trigger differs.
-    `--from-app N` is the usual one and the one to reach for after submitting:
-    it takes exactly the questions that application put on a form, so the
-    approval follows the submission instead of depending on remembering.
-    """
-    sql = ("SELECT DISTINCT q.* FROM questions q"
-           " JOIN question_instances i ON i.question_id = q.id")
-    rows: list = []
-    if args.from_app is not None:
-        rows = conn.execute(
-            sql + " WHERE i.application_id = ?", (args.from_app,)).fetchall()
-
-    if args.key:
-        for key in args.key:
-            row = conn.execute(
-                "SELECT * FROM questions WHERE question_key = ?", (key,)).fetchone()
-            if row is None:
-                print(f"no question with key {key!r}")
-            else:
-                rows.append(row)
-    if args.all_draft:
-        rows += conn.execute(
-            "SELECT * FROM questions WHERE status = 'draft'").fetchall()
-
-    if not rows:
-        print("nothing selected. Use --from-app N, --key KEY, or --all-draft.")
-        return 1
-
-    approved, left = [], []
-    seen: set[int] = set()
-    for row in sorted(rows, key=lambda r: r["question_key"]):
-        if row["id"] in seen:
+    changed = 0
+    for key in args.key:
+        row = conn.execute(
+            "SELECT id, retired_at FROM questions WHERE question_key = ?", (key,)
+        ).fetchone()
+        if row is None:
+            print(f"no question with key {key!r}")
             continue
-        seen.add(row["id"])
-        note = _approval_note(conn, row)
-        if row["status"] == "retired":
-            left.append((row["question_key"], note))
-            continue
-        conn.execute(
-            "UPDATE questions SET status = 'approved', updated_at = ? WHERE id = ?",
-            (now_iso(), row["id"]),
-        )
-        approved.append((row["question_key"], note))
+        if args.undo:
+            if row["retired_at"] is None:
+                print(f"{key}: not retired, nothing to undo")
+                continue
+            conn.execute(
+                "UPDATE questions SET retired_at = NULL, updated_at = ? WHERE id = ?",
+                (now_iso(), row["id"]))
+            print(f"{key}: back in use")
+        else:
+            if row["retired_at"] is not None:
+                print(f"{key}: already retired ({row['retired_at'][:10]})")
+                continue
+            conn.execute(
+                "UPDATE questions SET retired_at = ?, updated_at = ? WHERE id = ?",
+                (now_iso(), now_iso(), row["id"]))
+            print(f"{key}: retired; a lookup will no longer offer it")
+        changed += 1
     conn.commit()
-
-    if approved:
-        print(f"approved {len(approved)} question(s):")
-        width = max(len(key) for key, _ in approved)
-        for key, note in approved:
-            print(f"  {key:<{width}}  {note}")
-    if left:
-        print("left as they were:")
-        for key, note in left:
-            print(f"  {key}  {note}")
-    revised = [key for key, note in approved if note.startswith("REVISED")]
-    if revised:
-        print(f"\nread back when convenient: {', '.join(revised)}")
-        print("the form went out with older text than the bank now holds.")
+    if not changed:
+        print("nothing changed. Pass --key KEY (repeatable), and --undo to reverse.")
+        return 1
     return 0
 
 
+# --- frequency / promotions ------------------------------------------------
+
+
 def cmd_frequency(conn: sqlite3.Connection, args: argparse.Namespace) -> int:
-    sql = "SELECT * FROM questions_with_frequency WHERE status <> 'retired'"
+    sql = "SELECT * FROM questions_with_frequency WHERE retired_at IS NULL"
     params: list[object] = []
     if args.kind:
         sql += " AND kind = ?"
@@ -599,6 +566,12 @@ def render_digest(conn: sqlite3.Connection, kind: str) -> str:
         "> answers with `record`, then regenerate:",
         f"> `python3 -m db.tools.questions digest --kind {kind}"
         f" --out artifacts/faqs/{FAQ_PATHS[kind].name}`.",
+        ">",
+        "> The state on each entry is derived from the instance ledger, not",
+        "> maintained by hand: `unsent` means no submitted application has ever",
+        "> carried this question, `sent` that the answer listed is exactly what an",
+        "> employer received, and `revised` that it went out and the text has",
+        "> changed since, so the current wording has not been read in this form.",
         "",
     ]
 
@@ -610,7 +583,7 @@ def render_digest(conn: sqlite3.Connection, kind: str) -> str:
         lines.append("")
 
     rows = conn.execute(
-        "SELECT * FROM questions_with_frequency WHERE kind = ? AND status <> 'retired'"
+        "SELECT * FROM questions_with_frequency WHERE kind = ? AND retired_at IS NULL"
         " ORDER BY times_asked DESC, last_asked_at DESC, question_key",
         (kind,),
     ).fetchall()
@@ -619,10 +592,18 @@ def render_digest(conn: sqlite3.Connection, kind: str) -> str:
         return "\n".join(lines) + "\n"
 
     for row in rows:
-        meta = f"`{row['question_key']}` - {row['status']} - asked {row['times_asked']}x"
+        meta = f"`{row['question_key']}` - {row['state']} - asked {row['times_asked']}x"
         if row["last_asked_at"]:
             meta += f" - last {row['last_asked_at'][:10]}"
         lines += [f"## {row['canonical_text']}", "", meta, ""]
+
+        if row["state"] == "revised":
+            lines += [
+                "> **Sent as older text.** The answer below is not what the form"
+                " actually received, so nobody has read it in this form. It was:",
+                f"> {row['last_sent_text']}",
+                "",
+            ]
 
         if (row["answer_source"] or "").startswith("profile:"):
             lines += [f"**Answer:** from `{row['answer_source']}` (profile.jsonc).", ""]
@@ -824,8 +805,8 @@ def _insert_entry(conn: sqlite3.Connection, entry: dict, asked_at: str) -> str:
     if row is None:
         cur = conn.execute(
             "INSERT INTO questions (question_key, kind, canonical_text, answer,"
-            " reasoning, answer_source, aliases, promotes_to, status, metadata,"
-            " created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?, ?, ?)",
+            " reasoning, answer_source, aliases, promotes_to, metadata,"
+            " created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 key,
                 entry["kind"],
@@ -913,6 +894,105 @@ def cmd_import_faq(conn: sqlite3.Connection, args: argparse.Namespace) -> int:
     return 0
 
 
+# --- self-test --------------------------------------------------------------
+
+
+def cmd_selftest() -> int:
+    """Drive one answer through every derived state on a throwaway database.
+
+    The state is a CASE arm inside a view, which is the place a bug hides best:
+    a wrong arm still returns a row, it just mislabels it. This runs the
+    committed migrations against an empty database and moves one question
+    through all four states, including the two cases that are easy to get
+    wrong: an application that was never submitted must not count as an
+    employer having received the text, and one that did go out must keep
+    counting after it is later withdrawn.
+    """
+    from db.migrate import run_migrations
+
+    failures = 0
+    with tempfile.TemporaryDirectory() as tmp:
+        db_path = Path(tmp) / "selftest.db"
+        run_migrations(db_path=db_path)
+        conn = connect(db_path)
+        try:
+            conn.execute(
+                "INSERT INTO jobs (title, company) VALUES ('Test Role', 'Northwind')")
+            job_id = conn.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
+            conn.execute(
+                "INSERT INTO applications (job_id, status, applied_at)"
+                " VALUES (?, 'applied', '2026-10-18T00:00:00Z')", (job_id,))
+            sent_app = conn.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
+            conn.execute(
+                "INSERT INTO applications (job_id, status) VALUES (?, 'ready_to_apply')",
+                (job_id,))
+            draft_app = conn.execute("SELECT last_insert_rowid() AS id").fetchone()["id"]
+            conn.execute(
+                "INSERT INTO questions (question_key, canonical_text, answer)"
+                " VALUES ('k', 'What is your answer?', 'A')")
+            qid = conn.execute(
+                "SELECT id FROM questions WHERE question_key = 'k'").fetchone()["id"]
+
+            def state() -> str:
+                return conn.execute(
+                    "SELECT state FROM questions_with_frequency"
+                    " WHERE question_key = 'k'").fetchone()["state"]
+
+            def asked(application_id: int, given: str) -> None:
+                conn.execute(
+                    "INSERT INTO question_instances (question_id, application_id,"
+                    " field_label, answer_given) VALUES (?, ?, 'Your answer?', ?)",
+                    (qid, application_id, given))
+
+            def check(desc: str, want: str) -> None:
+                nonlocal failures
+                got = state()
+                if got == want:
+                    print(f"ok   {desc:<48} -> {got}")
+                else:
+                    failures += 1
+                    print(f"FAIL {desc:<48} -> {got}, wanted {want}")
+
+            check("no form has ever asked it", "unsent")
+            asked(draft_app, "A")
+            check("asked on an application never submitted", "unsent")
+            asked(sent_app, "A")
+            check("that exact text reached an employer", "sent")
+            conn.execute("UPDATE questions SET answer = 'B' WHERE id = ?", (qid,))
+            check("stored text changed after it went out", "revised")
+            conn.execute(
+                "UPDATE question_instances SET answer_given = 'B'"
+                " WHERE application_id = ?", (sent_app,))
+            check("a later form carried the new text", "sent")
+            conn.execute(
+                "UPDATE applications SET status = 'withdrawn' WHERE id = ?", (sent_app,))
+            check("withdrawn after it had been sent", "sent")
+            conn.execute(
+                "UPDATE questions SET retired_at = '2026-10-18T00:00:00Z' WHERE id = ?",
+                (qid,))
+            check("retired", "retired")
+            conn.execute("UPDATE questions SET retired_at = NULL WHERE id = ?", (qid,))
+            check("retirement undone", "sent")
+
+            produced = {
+                row["state"]
+                for row in conn.execute("SELECT state FROM questions_with_frequency")
+            }
+            unknown = produced - set(STATES)
+            if unknown:
+                failures += 1
+                print(f"FAIL view produced unknown state(s): {sorted(unknown)}")
+            else:
+                print(f"ok   {'every state the view produced is known':<48} "
+                      f"-> {'/'.join(sorted(produced))}")
+        finally:
+            conn.close()
+
+    total = 9
+    print(f"{total - failures}/{total} cases pass")
+    return 1 if failures else 0
+
+
 # --- CLI -------------------------------------------------------------------
 
 
@@ -935,7 +1015,6 @@ def build_parser() -> argparse.ArgumentParser:
         "--clear-promotes-to", dest="clear_promotes_to", action="store_true",
         help="drop a promotion that turned out to be answered case by case",
     )
-    p.add_argument("--status", choices=STATUSES, default="draft")
     p.add_argument("--alias", action="append", default=[], help="alternative wording (repeatable)")
     p.add_argument("--label", help="this form's exact field label (added as an alias)")
     p.add_argument("--field-type", dest="field_type", choices=FIELD_TYPES)
@@ -954,13 +1033,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--evidence", action="store_true", help="include every instance seen")
     p.set_defaults(func=cmd_lookup)
 
-    p = sub.add_parser("approve", help="mark answers as read back and safe to reuse")
-    p.add_argument("--key", action="append", help="question_key (repeatable)")
-    p.add_argument("--from-app", dest="from_app", type=int,
-                   help="approve exactly what this application put on a form")
-    p.add_argument("--all-draft", dest="all_draft", action="store_true",
-                   help="approve everything still in draft")
-    p.set_defaults(func=cmd_approve)
+    p = sub.add_parser("retire", help="set an answer aside, or bring it back")
+    p.add_argument("--key", action="append", required=True, help="question_key (repeatable)")
+    p.add_argument("--undo", action="store_true", help="reverse a retirement")
+    p.set_defaults(func=cmd_retire)
 
     p = sub.add_parser("frequency", help="every canonical question by times asked")
     p.add_argument("--kind", choices=KINDS)
@@ -980,6 +1056,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--path", type=Path, help="a FAQ file (default: both standard paths)")
     p.add_argument("--dry-run", action="store_true")
     p.set_defaults(func=cmd_import_faq)
+
+    p = sub.add_parser("selftest", help="check the derived answer state on fixed cases")
+    p.set_defaults(func=lambda conn, args: cmd_selftest())
 
     return parser
 

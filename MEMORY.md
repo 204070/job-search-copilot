@@ -26,8 +26,9 @@
 - **Identity facts:** `artifacts/profile.jsonc` — read before drafting/filling.
 - **Question bank:** `db/jobs.db` (`questions` + `question_instances`) behind
   `python3 -m db.tools.questions` — `lookup` before filling, `record` at
-  handover, `approve --from-app N` after submitting; `artifacts/faqs/*.md` are
-  generated from it (`digest`).
+  handover, `retire` to set an answer aside; an answer's state (`unsent` /
+  `sent` / `revised`, derived from the instance ledger, never approved by hand);
+  `artifacts/faqs/*.md` are generated from it (`digest`).
 - **Review digest:** `python3 -m db.tools.review` rewrites the one living file
   `artifacts/review.md` (private, gitignored): what changed since last time,
   follow-ups due, applications, next roles, pipeline health, question-bank
@@ -70,17 +71,19 @@
 
 - **A derived view must not hold state (18/10).** The digest could remind but
   never clear: what the person had already dealt with lived in nobody's records,
-  so the same items reappeared. Two gaps of the same shape were behind it. The
-  question bank's `status` only moves when something moves it — `record` writes
-  `draft`, and filling a form and submitting one both left it there, so an
-  answer an employer had received read like one typed five minutes earlier
-  (`approve --from-app N` is the missing half, and flags text changed since it
-  was sent) — and a lead the person had read and rejected had no command at all,
-  only a SQL statement (`dismiss --job N --reason "..."`). The digest is now one
-  living file, rewritten in place, with section 1 showing what changed since the
-  previous rewrite, computed from the `Refreshed:` line the file itself carried.
-  The rule: if an action has no command, the action never gets recorded, and a
-  dated log of a derived page is redundant the moment the next one exists.
+  so the same items reappeared. A lead read and rejected had no command at all,
+  only a SQL statement, which is why `dismiss --job N --reason` exists, and the
+  digest became one living file whose section 1 is what changed since the
+  previous rewrite, read from the `Refreshed:` line it carries.
+  The bank's `status` column was the same defect wearing a command: `approve
+  --from-app N` was added to record that a sent answer had been read back, and
+  what it actually recorded was that the command had been run — all 18 rows
+  read `approved` after one call, and only 10 had ever been on a submitted
+  application. Submission already IS the review, so the state is now derived
+  from the instance ledger (`unsent` / `sent` / `revised` / `retired`) and
+  nothing approves anything. Two rules: if an action has no command, the action
+  never gets recorded; and a state that can be derived must never be certified
+  by hand, because the certificate outlives the truth it stood for.
 - **The resume is a floor, not a ceiling (18/10).** A technical answer drafted
   from `resume.pdf` alone seriously undersold the candidate: the resume omits
   Cassandra, ClickHouse, Heroku/Vercel/Netlify/Cloudflare, bare-metal with

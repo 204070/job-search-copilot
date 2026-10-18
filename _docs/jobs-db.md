@@ -33,7 +33,7 @@ All future schema changes go in new numbered files on top of the baseline
 | `jobs` | Postings: `status` ∈ bookmarked → ready_to_apply → applied → archived; `workplace_type` ∈ remote, hybrid, onsite, unknown (default unknown); nullable `match_score` 0–100; salary range pair; `metadata` JSON (include `reason_for_archive` when archived) |
 | `applications` | One per submission: `status` ∈ ready_to_apply → applied → screening → interviewing → offer → rejected/withdrawn → archived; `applied_at` set on `applied` transition; method, resume/cover-letter variants, referrer, notes; `metadata` JSON |
 | `application_events` | Append-only timeline: status_change, applied, follow_up, interview, offer, rejection, withdrawal, note; `occurred_at` + optional `scheduled_for`; `metadata` JSON |
-| `questions` | Canonical, deduped application/interview questions: `question_key` (stable slug), `kind` (application/technical), `canonical_text`, `answer`, `reasoning`, `answer_source` (`profile:<path>` / `answer_bank`), `aliases` JSON, `promotes_to` (profile path awaiting promotion), `status` (draft/approved/retired) |
+| `questions` | Canonical, deduped application/interview questions: `question_key` (stable slug), `kind` (application/technical), `canonical_text`, `answer`, `reasoning`, `answer_source` (`profile:<path>` / `answer_bank`), `aliases` JSON, `promotes_to` (profile path awaiting promotion), `retired_at` (NULL while in use; the state itself is derived, see below) |
 | `question_instances` | Append-only ledger: one row per time a form asked a question — `field_label`, `field_type`, `required`, `options_seen` JSON, `answer_given`, `asked_at`, optional `application_id`/`job_id` |
 | `questions_fts` | FTS5 external-content index over canonical text, answer and aliases (kept in sync by triggers) — powers `lookup` |
 | `schema_migrations` | Applied filenames, owned by the runner |
@@ -89,11 +89,11 @@ Two layers, so "is this frequently asked?" is a `COUNT`, not a judgement call:
   asked it, carrying the date, the job/application, and the options that form
   showed. Frequency and provenance live here, not in the canonical row.
 
-`questions_with_frequency` reads a question with its `times_asked` and
-`last_asked_at`. `questions_fts` is a stdlib FTS5 index kept in sync by
-triggers; the CLI treats it as an accelerator and falls back to a LIKE scan if
-it is ever absent (a SQLite build without FTS5 makes migration `0002` fail, so
-keep FTS5 binaries).
+`questions_with_frequency` reads a question with its `times_asked`,
+`last_asked_at` and the derived `state` + `last_sent_text`. `questions_fts` is a
+stdlib FTS5 index kept in sync by triggers; the CLI treats it as an accelerator
+and falls back to a LIKE scan if it is ever absent (a SQLite build without FTS5
+makes migration `0002` fail, so keep FTS5 binaries).
 
 The CLI is `python3 -m db.tools.questions`:
 
@@ -101,30 +101,36 @@ The CLI is `python3 -m db.tools.questions`:
 |---|---|
 | `lookup "<label>"` | Best canonical matches for a form's wording, with answer + reasoning + frequency. `--kind technical`, `--evidence`. Exit 1 on a miss |
 | `record` | Upsert the canonical question and append one instance (`--key`, `--label`, `--option`, `--field-type`, `--required`, `--answer-given`, `--job-id`, `--application-id`, `--source`, `--promotes-to`, `--clear-promotes-to`, `--alias`) |
-| `approve` | Mark answers read back and safe to reuse (`--from-app N`, `--key KEY`, `--all-draft`) |
+| `retire --key KEY [--undo]` | Set an answer aside so `lookup` stops offering it, or bring it back |
 | `frequency` | Every question by times asked (`--kind`, `--min-count`) |
 | `promotions` | Facts with a `promotes_to` path not yet in `profile.jsonc` |
 | `digest --kind application\|technical` | Regenerate a FAQ doc (`--out PATH`, else stdout) |
 | `import-faq` | One-off: load the pre-bank `artifacts/faqs/*.md` format |
+| `selftest` | Drive one answer through every derived state on a throwaway database |
 
 `artifacts/faqs/application-faq.md` and `technical-faq.md` are **generated** by
 `digest`, not hand-written. Record answers with `record`, then regenerate. The
 awkward case worth naming: a question a form phrases with no words in common
 with the canonical text misses until you add that phrasing as an `--alias`.
 
-`status` is a *review* state, not a record of what happened. `record` writes
-`draft`, and nothing flips it automatically: not filling a form, not submitting
-one. `approve` is the only thing that moves a row to `approved`, and the honest
-trigger is a submission, because the text that reached an employer is the text
-that was accepted:
+**An answer's state is derived, never approved.** Submitting is the review, and
+the command that used to record it (`approve --from-app N`) recorded only that
+a command had been run: on the live bank it marked all 18 answers approved in
+one call, and only 10 of those had ever been on a submitted application. What
+the bank shows instead comes from the ledger, in `questions_with_frequency`:
 
-    python3 -m db.tools.questions approve --from-app 4
+- `unsent` — no submitted application has ever carried this question;
+- `sent` — the stored text is exactly what an employer received;
+- `revised` — it went out and the text has changed since, so the current
+  wording has not been read in this form; the one state the digest raises;
+- `retired` — deliberately set aside with `retire`, the only state a human
+  writes.
 
-`approve` reports how the bank's text compares with what the form actually
-carried. A row marked `REVISED after it was sent` was edited after the
-application went out, so it has not been read in its current form and is worth
-a minute. Nothing in the pipeline approves on its own, so after filing an
-application, run this.
+"Reached an employer" is `applications.applied_at`, not the current status: an
+application withdrawn after it went out still carried the text, so withdrawing
+must not un-send it. `record --answer` writes the *reusable* answer, so a note
+about a form belongs in `metadata` (the FAQ renders `original_answer`), not in
+`answer`; otherwise the sent/revised comparison compares a note with an answer.
 
 `promotes_to` marks a question whose answer looks like it belongs in
 `profile.jsonc`. When that turns out to be wrong — compensation expectations,
@@ -201,10 +207,10 @@ SELECT status, COUNT(*) FROM jobs GROUP BY status;
 SELECT id, title, source, source_kind, status
 FROM jobs_with_source ORDER BY id DESC LIMIT 20;
 
--- What a form is most likely to ask, and how often it has come up
-SELECT question_key, kind, times_asked, last_asked_at, canonical_text
+-- What a form is most likely to ask, how often, and whether it has been sent
+SELECT question_key, kind, times_asked, last_asked_at, state, canonical_text
 FROM questions_with_frequency
-WHERE status <> 'retired' ORDER BY times_asked DESC, last_asked_at DESC;
+WHERE retired_at IS NULL ORDER BY times_asked DESC, last_asked_at DESC;
 
 -- The exact wording and options a given form showed, most recent first
 SELECT i.asked_at, i.field_label, i.field_type, i.options_seen, i.answer_given,

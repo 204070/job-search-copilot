@@ -12,7 +12,7 @@ this week. This tool reads the database and produces that page:
 One living file, rewritten in place, not a dated log. There is nothing to
 accumulate: the digest holds no state, and a stale item leaves the page by
 being resolved in the database (a chase closed, a lead archived, an answer
-approved), not by being edited out of the text. Hand edits would be lost on
+retired), not by being edited out of the text. Hand edits would be lost on
 the next rewrite, which is why every actionable line carries the command that
 closes it. The database is the memory; this page is a view.
 
@@ -331,11 +331,16 @@ def section_needs_you(conn, apps, today: date) -> list[str]:
                     f"on record. Schedule it with "
                     f"`python3 -m db.tools.review follow-up --app {row['app_id']} --in-days 1`.")
 
-    pending = _count(conn, "SELECT COUNT(*) FROM questions WHERE status = 'draft'")
-    if pending:
+    revised = conn.execute(
+        "SELECT COUNT(*) AS n FROM questions_with_frequency WHERE state = 'revised'"
+    ).fetchone()["n"]
+    if revised:
         items.append(
-            f"- [ ] **Review the question bank**: {pending} answer(s) still "
-            f"marked draft, so none has been read back to you.")
+            f"- [ ] **Read back {revised} bank answer(s)**: the stored text has "
+            f"changed since a form received it, so the current wording has not "
+            f"been read in this form. "
+            f"`python3 -m db.tools.questions lookup \"<wording>\"` shows it beside "
+            f"what was sent.")
 
     out += items or ["(nothing needs a decision today)"]
     out.append("")
@@ -469,14 +474,19 @@ def section_questions(conn) -> list[str]:
     out.append(f"{total} question(s) recorded; {asked_twice} asked more than once "
                "(those are the ones worth stabilising).")
     out.append("")
+    out.append("`state` is derived from the instance ledger, not kept by hand: "
+               "`unsent` has never been on a submitted application, `sent` is "
+               "exactly what an employer received, and `revised` went out and has "
+               "changed since.")
+    out.append("")
     rows = conn.execute(
-        "SELECT id, question_key, kind, times_asked, status,"
+        "SELECT id, question_key, kind, times_asked, state,"
         "       substr(canonical_text, 1, 58) q"
-        " FROM questions_with_frequency WHERE status <> 'retired'"
-        " ORDER BY times_asked DESC, id LIMIT 20").fetchall()
-    out += _table(["id", "key", "kind", "asked", "status", "question"],
+        " FROM questions_with_frequency WHERE retired_at IS NULL"
+        " ORDER BY state = 'revised' DESC, times_asked DESC, id LIMIT 20").fetchall()
+    out += _table(["id", "key", "kind", "asked", "state", "question"],
                   [[r["id"], f"`{r['question_key']}`", r["kind"], r["times_asked"],
-                    r["status"], r["q"]] for r in rows])
+                    r["state"], r["q"]] for r in rows])
     out.append("")
     return out
 
@@ -516,7 +526,7 @@ def build_digest(conn: sqlite3.Connection, today: date | None = None,
         "python3 -m db.tools.review follow-up --app 4 --in-days 7  # schedule a chase",
         "python3 -m db.tools.review resolve --event 12             # close a chase",
         "python3 -m db.tools.review dismiss --job 616 --reason \"...\"   # drop a lead",
-        "python3 -m db.tools.questions approve --from-app 4        # approve what it sent",
+        "python3 -m db.tools.questions retire --key KEY            # set an answer aside",
         "```",
         "",
     ]
