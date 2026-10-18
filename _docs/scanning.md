@@ -62,6 +62,28 @@ groups the board; the daily report sorts matches by scope first, so a role you
 can't take no longer buries one you can. `jobs.region_evidence` keeps the
 phrase that produced the tag.
 
+### Not every `region_gated` list excludes you
+
+`region_gated` covers two opposite situations, and the tag alone cannot tell
+them apart, so the sort reads the evidence phrase as well
+(`eligibility.scope_rank`, shared by the scanner report and the digest):
+
+| order | scope | why |
+|---|---|---|
+| 1 | `worldwide` | open to anyone |
+| 2 | `region_gated` naming a region you are in | EMEA, MEA, Africa, Nigeria: officially open to you |
+| 3 | `unknown` | states nothing, so not a bar, but not a promise either |
+| 4 | `region_gated` naming only other regions | Europe alone, the Americas, APAC, the Gulf: read the list |
+| 5 | `us_only` | the only real bar |
+
+A named region that includes West Africa is better information than silence,
+which is why it ranks above `unknown` instead of below it. `EMEA` includes
+Africa; `Middle East` and `GCC` do not, so they stay in row 4. Short board
+abbreviations (`AMER`, `EMEA`, `APAC`, `MEA`) are location strings in their own
+right; a missing one used to read as "no restriction stated" rather than as a
+list. `covers_home()` is the only place that vocabulary lives, and
+`python3 -m scanner.eligibility` checks it alongside the tags.
+
 ```bash
 python3 -m scanner.tools.classify              # re-tag every job, print counts
 python3 -m scanner.tools.classify --examples 3  # audit the tags by phrase

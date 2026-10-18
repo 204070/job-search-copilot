@@ -21,18 +21,22 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # repo root
 
 from db import connect  # noqa: E402
 from scanner import fetchers  # noqa: E402
-from scanner.eligibility import SCOPES, classify  # noqa: E402
+from scanner.eligibility import SCOPES, classify, scope_rank  # noqa: E402
 from scanner.keywords import Matcher, min_score  # noqa: E402
 from scanner.store import classify_stored_jobs, now_iso, upsert_job  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 LEADS_DIR = ROOT / "logs" / "leads"
 
-#: Report order: a role that states no restriction is a better lead than one
-#: that names other regions, and both beat one that demands US work
-#: authorisation. Sorting by scope before score stops 77 "Remote, USA" postings
-#: from burying everything else on the page.
-SCOPE_RANK = {"worldwide": 0, "unknown": 1, "region_gated": 2, "us_only": 3}
+
+def _lead_order(item: dict) -> tuple:
+    """Report sort key: where it hires first, then score.
+
+    A named region that includes us (EMEA, Africa) beats "says nothing", and
+    both beat a list that excludes us, so 77 "Remote, USA" postings stop
+    burying everything else on the page. Ordering lives in the classifier.
+    """
+    return scope_rank(item["scope"], item.get("evidence")), -item["match_score"]
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -101,7 +105,7 @@ def main(argv: list[str] | None = None) -> int:
                 seen += 1
             if (job.get("metadata") or {}).get("bookmarked"):
                 bookmarked.append({**job, "board": name, "status": status,
-                                   "scope": scope})
+                                   "scope": scope, "evidence": scope_evidence})
         if not args.dry_run:
             conn.execute(
                 "UPDATE boards SET last_checked_at = ? WHERE id = ?",
@@ -132,10 +136,11 @@ def main(argv: list[str] | None = None) -> int:
             f"{scope}: {scope_counts.get(scope, 0)}" for scope in SCOPES))
     if matches:
         body.append(f"\n### New matches ({len(matches)})")
-        body.append("Sorted by region scope first: a role that states no "
-                    "restriction ranks above one that names other regions, and "
-                    "both rank above one that demands US work authorisation.")
-        for m in sorted(matches, key=lambda x: (SCOPE_RANK[x["scope"]], -x["match_score"])):
+        body.append("Sorted by region scope first: a role that names a region "
+                    "you are in (EMEA, Africa) ranks with one that states no "
+                    "restriction, and both rank above a list that excludes you "
+                    "or demands US work authorisation.")
+        for m in sorted(matches, key=_lead_order):
             body.append(f"- **{m['match_score']}** [{m['scope']}] {m['title']}"
                         f" — {m.get('company') or '?'} [{m['board']}] ({', '.join(m['matched'])})\n  {m['url']}")
     else:
@@ -143,7 +148,7 @@ def main(argv: list[str] | None = None) -> int:
     if bookmarked:
         # Bookmark = user intent: shown regardless of match threshold.
         body.append(f"\n### Bookmarked on X ({len(bookmarked)})")
-        for b in sorted(bookmarked, key=lambda x: (SCOPE_RANK[x["scope"]], -x["match_score"])):
+        for b in sorted(bookmarked, key=_lead_order):
             body.append(f"- **{b['match_score']}** [{b['scope']}] {b['title']}"
                         f" — {b.get('company') or '?'} ({b['status']})\n  {b['url']}")
     if errors:

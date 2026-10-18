@@ -59,14 +59,19 @@ DEFAULT_OUT = Path("artifacts/review.md")
 #: The line the next run reads to know when this file was last refreshed.
 REFRESHED_RE = re.compile(r"^Refreshed: (?P<stamp>\S+)", re.M)
 
-#: Sort key for where a posting hires. `unknown` stays visible on purpose.
-SCOPE_RANK = {"worldwide": 0, "unknown": 1, "region_gated": 2, "us_only": 3}
+#: Sort key for where a posting hires, used only when the classifier cannot be
+#: imported: `unknown` stays visible on purpose, `us_only` sinks.
+_FALLBACK_SCOPE_RANK = {"worldwide": 0, "unknown": 1, "region_gated": 2,
+                        "us_only": 3}
 
 #: Fallback for "this title reads like one of our roles", used only when the
 #: scanner's own gate cannot be loaded. The real answer comes from
 #: `Matcher.admits()`, so the report and the scorer cannot disagree.
 ENGINEERING_TITLE = re.compile(
     r"(?i)\b(engineer|developer|programmer|sre|devops|architect)\b")
+
+#: Stand-in for a row with no usable timestamp at all, so it sorts last.
+_EPOCH = datetime.min.replace(tzinfo=timezone.utc)
 
 #: Statuses that mean the application is over.
 CLOSED_STATUSES = ("rejected", "withdrawn", "archived")
@@ -194,6 +199,35 @@ def _admits(matcher, title: str | None) -> bool:
     return bool(ENGINEERING_TITLE.search(title or ""))
 
 
+def _scope_rank(scope: str | None, evidence: str | None = None) -> int:
+    """Triage order for where a posting hires, from the classifier itself.
+
+    The vocabulary that decides whether a named region includes us lives in
+    `scanner.eligibility`, next to the regex that produced the tag, so the
+    report and the scanner cannot disagree about it; the local dict is only a
+    fallback for when that module cannot be imported.
+    """
+    try:
+        from scanner.eligibility import scope_rank
+    except (ImportError, OSError, ValueError):
+        return _FALLBACK_SCOPE_RANK.get(scope, 4)
+    return scope_rank(scope, evidence)
+
+
+def _posted(row: sqlite3.Row) -> datetime:
+    """When the posting entered the pool: posted date, else when we saved it.
+
+    Feed timestamps arrive in two shapes ("...Z" and "...+00:00"), so they are
+    parsed rather than compared as strings, and a naive one is read as UTC so
+    mixed rows stay comparable.
+    """
+    for field in ("posted_at", "bookmarked_at", "created_at"):
+        moment = parse_iso(row[field])
+        if moment is not None:
+            return moment if moment.tzinfo else moment.replace(tzinfo=timezone.utc)
+    return _EPOCH
+
+
 def _blind_spot(conn: sqlite3.Connection, exclude_ids: set[int] | None = None,
                 limit: int = 12) -> tuple[int, int, list]:
     """Bookmarked postings the gate admits whose stored text matches nothing.
@@ -202,18 +236,25 @@ def _blind_spot(conn: sqlite3.Connection, exclude_ids: set[int] | None = None,
     gate stopped being a fixed list of nine phrasings, this is no longer a hole
     in the scorer: it is the honest remainder, either a row whose feed carried
     no description, or an advert that names none of the stack. Both need a
-    human eye rather than a better keyword list, so this reports them and does
-    not rank them (score 0 carries no ordering information).
+    human eye rather than a better keyword list, so the samples are the newest
+    first: a score of 0 carries no ordering information, but recency does, and
+    a closing date rides on a new posting rather than an old one.
+
+    A posting that already has an application is not a next role, so it is
+    left out here the same way the table above leaves it out.
     """
     rows = conn.execute(
-        "SELECT id, title, company, region_scope, match_score, url,"
+        "SELECT id, title, company, region_scope, match_score, url, posted_at,"
+        " bookmarked_at, created_at,"
         " length(coalesce(raw_text, '')) AS textlen FROM jobs"
         " WHERE status = 'bookmarked' AND coalesce(match_score, 0) = 0"
+        "   AND id NOT IN (SELECT job_id FROM applications)"
     ).fetchall()
     matcher = _matcher()
     skip = exclude_ids or set()
     hits = [r for r in rows
             if r["id"] not in skip and _admits(matcher, r["title"])]
+    hits.sort(key=lambda r: (_posted(r), r["id"]), reverse=True)
     return len(hits), sum(1 for r in hits if not r["textlen"]), hits[:limit]
 
 
@@ -379,9 +420,11 @@ def section_next_roles(conn) -> list[str]:
         " FROM jobs WHERE status = 'bookmarked'"
         "   AND id NOT IN (SELECT job_id FROM applications)").fetchall()
     matcher = _matcher()
-    # Same precedence the scanner report uses: where it hires outranks how well
-    # it scores, so a worldwide posting is never buried under a US-only one.
-    ranked.sort(key=lambda r: (SCOPE_RANK.get(r["region_scope"], 9),
+    # Coverage-aware order from the classifier: a posting that names a region
+    # we are in (EMEA, Africa) is better information than one that says
+    # nothing, so it ranks above `unknown` rather than below it. Score breaks
+    # the tie, so a worldwide posting is never buried under a US-only one.
+    ranked.sort(key=lambda r: (_scope_rank(r["region_scope"], r["region_evidence"]),
                                -(r["match_score"] or 0)))
     # Drop the score-0 junk the feeds carry (writers, sales, assistants) while
     # keeping a score-0 posting whose title the gate admits, since "right kind
@@ -399,10 +442,11 @@ def section_next_roles(conn) -> list[str]:
         if len(top) >= NEXT_ROLE_LIMIT:
             break
 
-    out += ["Ordered by where the posting hires first, then by score "
-            "(worldwide, unknown, region-gated, US-only). At most "
-            f"{MAX_PER_EMPLOYER} per employer, so one company cannot fill the "
-            "page:", ""]
+    out += ["Ordered by where the posting hires first, then by score: "
+            "worldwide, then a named region that includes you (EMEA, Africa), "
+            "then unknown, then a named list that excludes you, then US-only. "
+            f"At most {MAX_PER_EMPLOYER} per employer, so one company cannot "
+            "fill the page:", ""]
     out += _table(["job", "role", "employer", "scope", "score"],
                   [[f"#{r['id']}", (r['title'] or '')[:42], r['company'],
                     r['region_scope'], r['match_score']] for r in top])
@@ -412,12 +456,17 @@ def section_next_roles(conn) -> list[str]:
             "gate accepts them, the ad text names none of the stack, so they "
             "score 0 and stay out of the table above. "
             f"{empty} of the {total} arrived with no description at all, which "
-            "makes them unscorable from here. Judge the rest by title: a role "
-            "can be a fit in a stack the list does not know yet.", ""]
-    out += _table(
-        ["job", "role", "employer", "scope"],
-        [[f"#{r['id']}", (r['title'] or '')[:48], r['company'], r['region_scope']]
-         for r in samples])
+            "makes them unscorable from here. Newest first, because a closing "
+            "date rides on a new posting rather than an old one. Judge the rest "
+            "by title: a role can be a fit in a stack the list does not know "
+            "yet.", ""]
+    blind_rows = []
+    for r in samples:
+        moment = _posted(r)
+        blind_rows.append([f"#{r['id']}", (r['title'] or '')[:40], r['company'],
+                           r['region_scope'],
+                           moment.date().isoformat() if moment > _EPOCH else "-"])
+    out += _table(["job", "role", "employer", "scope", "posted"], blind_rows)
     out.append("")
     return out
 
@@ -664,7 +713,56 @@ def cmd_selftest() -> int:
     if days_since(None, date(2026, 10, 18)) is not None:
         failures += 1
         print("FAIL  days_since(None) should be None")
-    total = len(cases) + 2
+
+    # Where a posting hires: a named region we are in beats "says nothing",
+    # which beats a named list that excludes us, and us_only sinks last.
+    rank_cases = [
+        ("worldwide", "Anywhere", 0),
+        ("region_gated", "Remote, EMEA", 1),
+        ("region_gated", "Africa", 1),
+        ("unknown", None, 2),
+        ("region_gated", "Europe, USA, Canada, APAC", 3),
+        ("region_gated", "Remote, AMER", 3),
+        ("us_only", "Remote, USA", 4),
+    ]
+    for scope, evidence, expected in rank_cases:
+        got = _scope_rank(scope, evidence)
+        if got != expected:
+            failures += 1
+            print(f"FAIL  _scope_rank({scope!r}, {evidence!r}) = {got}, "
+                  f"expected {expected}")
+    if not (_scope_rank("region_gated", "EMEA") < _scope_rank("unknown", None)
+            < _scope_rank("region_gated", "APAC") < _scope_rank("us_only", None)):
+        failures += 1
+        print("FAIL  scope order is not covering < unknown < excluding < us_only")
+
+    # Recency for the blind-spot table: posted date wins, both timestamp
+    # shapes parse, and a row with nothing usable sorts last.
+    def _row(**kw):
+        base = {"id": 1, "posted_at": None, "bookmarked_at": None,
+                "created_at": None}
+        return {**base, **kw}
+
+    order_cases = [
+        ({"posted_at": "2026-10-16T10:01:36+00:00"},
+         {"posted_at": "2026-10-01T00:00:00Z"}, True,
+         "a newer posted_at sorts first across offset and Z shapes"),
+        ({"posted_at": "2026-01-01T00:00:00Z", "bookmarked_at": "2026-10-18T10:00:00Z"},
+         {"created_at": "2026-10-17T00:00:00Z"}, False,
+         "posted_at outranks when we saved it, so an old posting still sinks"),
+        ({"bookmarked_at": "2026-10-18T10:27:27Z"},
+         {"created_at": "2026-10-17T00:00:00Z"}, True,
+         "bookmarked_at is the fallback"),
+        ({"created_at": "2026-10-18T00:00:00Z"}, {}, True,
+         "a row with no timestamps sorts last"),
+    ]
+    for newer, older, expect_first, why in order_cases:
+        got = _posted(_row(**newer)) > _posted(_row(**older))
+        if got != expect_first:
+            failures += 1
+            print(f"FAIL  recency: {why}")
+
+    total = len(cases) + 2 + len(rank_cases) + 1 + len(order_cases)
     print(f"{total - failures}/{total} cases pass")
     return 1 if failures else 0
 

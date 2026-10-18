@@ -17,12 +17,17 @@ Scopes:
 Only `us_only` is a real bar for a candidate who needs no US sponsorship.
 Nothing is ever excluded on this basis; it is a triage tag.
 
-Two subtleties this deliberately gets right:
+Three subtleties this deliberately gets right:
 
 - "USA timezones" / "US hours" / "US clients" are NOT bars. They describe
   overlap, and overlapping ET afternoons is an explicitly accepted condition.
 - A list that includes the US among other regions ("Europe, USA, Canada,
   APAC") is `region_gated`, not `us_only`.
+- Not every `region_gated` list excludes. EMEA, MEA and Africa include West
+  Africa; Europe alone, the Americas, APAC and the Gulf do not. `scope_rank`
+  puts the covering lists above `unknown`, because "open to a region you are
+  in" is better information than "says nothing" - the tag alone cannot tell
+  the two apart, which is what `covers_home` is for.
 
 Run `python3 -m scanner.eligibility` for the worked cases this is specified by.
 """
@@ -83,15 +88,28 @@ _US_PLACE = re.compile(
 )
 
 #: Regions/countries other than the US: naming any of these alongside a US
-#: mention makes it a list to check rather than a US-only bar.
+#: mention makes it a list to check rather than a US-only bar. The short
+#: abbreviations (AMER, EMEA, APAC, MEA) are here because job boards use them
+#: as location strings in their own right, and a missing one silently reads as
+#: "no restriction stated" rather than as a list.
 _REGION = re.compile(
-    r"\b(europe|emea|apac|latam|latin america|asia|africa|oceania|north america|"
+    r"\b(europe|emea|apac|amer|americas|latam|latin america|mea|asia|africa|"
+    r"sub-saharan africa|west africa|oceania|north america|"
     r"canada|united kingdom|uk|ireland|germany|france|spain|portugal|netherlands|"
     r"poland|romania|ukraine|switzerland|sweden|norway|denmark|finland|estonia|"
     r"australia|new zealand|india|pakistan|bangladesh|philippines|indonesia|"
     r"malaysia|vietnam|thailand|singapore|japan|south korea|israel|brazil|"
     r"mexico|argentina|colombia|chile|peru|nigeria|kenya|ghana|egypt|morocco|"
-    r"south africa|emea|middle east|gcc|dubai|uae)\b",
+    r"south africa|middle east|gcc|dubai|uae)\b",
+    re.I,
+)
+
+#: The regions that actually include the candidate's own region (West Africa).
+#: A gate naming one of these is open to them rather than closed; Europe alone,
+#: the Americas, APAC and the Gulf are not on the list even though all of them
+#: are `region_gated`. This is the vocabulary `scope_rank` triages by.
+_HOME_REGION = re.compile(
+    r"\b(africa|sub[- ]saharan|west africa|emea|mea|nigeria|ecowas)\b",
     re.I,
 )
 
@@ -147,6 +165,49 @@ def classify(location: str | None, description: str | None = None) -> tuple[str,
     return UNKNOWN, loc or None
 
 
+# --- coverage and triage order ---------------------------------------------
+
+
+def covers_home(scope: str, evidence: str | None = None) -> bool:
+    """Whether this tag actually includes the candidate's own region.
+
+    `worldwide` always does. `unknown` says nothing, so it is not coverage.
+    A `region_gated` tag covers only when the named region includes West
+    Africa: EMEA, MEA, Africa and Nigeria do; Europe alone, the Americas, APAC
+    and the Gulf do not.
+    """
+    if scope == WORLDWIDE:
+        return True
+    if scope == REGION_GATED:
+        return bool(_HOME_REGION.search(evidence or ""))
+    return False
+
+
+def scope_rank(scope: str | None, evidence: str | None = None) -> int:
+    """Triage order for where a posting hires. Lower is seen first.
+
+    Coverage outranks ignorance, which outranks a gate that excludes:
+
+        0  worldwide
+        1  a named region that includes West Africa (EMEA, MEA, Africa)
+        2  unknown - no restriction stated, and not a bar
+        3  a named list that does not include West Africa
+        4  us_only, the only real bar
+
+    The tag alone cannot separate 1 from 3 (both are `region_gated`), which is
+    why this takes the evidence phrase too.
+    """
+    if scope == WORLDWIDE:
+        return 0
+    if covers_home(scope, evidence):
+        return 1
+    if scope == UNKNOWN:
+        return 2
+    if scope == REGION_GATED:
+        return 3
+    return 4
+
+
 # --- self-test: the cases this module is specified by ----------------------
 
 _CASES: list[tuple[str | None, str | None, str]] = [
@@ -173,6 +234,45 @@ _CASES: list[tuple[str | None, str | None, str]] = [
     ("US timezones", None, UNKNOWN),
     ("Remote | US hours", None, UNKNOWN),
     ("Remote (US clients)", None, UNKNOWN),
+    # abbreviations a board uses as the whole location string: a missing token
+    # reads as "no restriction stated", which is the wrong kind of wrong
+    ("Remote, AMER", None, REGION_GATED),
+    ("Remote, APAC", None, REGION_GATED),
+    ("EMEA", None, REGION_GATED),
+    ("Remote, EMEA", None, REGION_GATED),
+    ("Sub-Saharan Africa", None, REGION_GATED),
+]
+
+#: (scope, evidence, rank) - the order the digest triages leads by.
+_RANK_CASES: list[tuple[str, str | None, int]] = [
+    (WORLDWIDE, "Worldwide", 0),
+    (REGION_GATED, "EMEA", 1),
+    (REGION_GATED, "Remote, EMEA", 1),
+    (REGION_GATED, "Africa", 1),
+    (REGION_GATED, "Sub-Saharan Africa", 1),
+    (REGION_GATED, "Lagos, Nigeria", 1),
+    (UNKNOWN, None, 2),
+    (REGION_GATED, "Europe, USA, Canada, APAC", 3),
+    (REGION_GATED, "Remote, AMER", 3),
+    (REGION_GATED, "GCC", 3),
+    (US_ONLY, "Remote, USA", 4),
+    (None, None, 4),
+]
+
+#: (scope, evidence, covers) - what `covers_home` is for.
+_COVER_CASES: list[tuple[str, str | None, bool]] = [
+    (WORLDWIDE, "Anywhere", True),
+    (UNKNOWN, None, False),
+    (US_ONLY, "USA", False),
+    (REGION_GATED, "EMEA", True),
+    (REGION_GATED, "MEA", True),
+    (REGION_GATED, "Africa", True),
+    (REGION_GATED, "West Africa", True),
+    (REGION_GATED, "Europe", False),
+    (REGION_GATED, "APAC", False),
+    (REGION_GATED, "Middle East", False),
+    (REGION_GATED, "North America, LATAM", False),
+    (REGION_GATED, None, False),
 ]
 
 
@@ -185,7 +285,20 @@ def _self_test() -> int:
         flag = "ok  " if ok else "FAIL"
         shown = f"loc={location!r}" + (f" desc={description!r}" if description else "")
         print(f"{flag} {got:<12} (want {expected:<12}) {shown}   evidence={evidence!r}")
-    print(f"\n{len(_CASES) - failures}/{len(_CASES)} cases pass")
+    for scope, evidence, expected in _RANK_CASES:
+        got = scope_rank(scope, evidence)
+        ok = got == expected
+        failures += not ok
+        flag = "ok  " if ok else "FAIL"
+        print(f"{flag} rank {got} want {expected} {scope!r} {evidence!r}")
+    for scope, evidence, expected in _COVER_CASES:
+        got = covers_home(scope, evidence)
+        ok = got == expected
+        failures += not ok
+        flag = "ok  " if ok else "FAIL"
+        print(f"{flag} covers {got} want {expected} {scope!r} {evidence!r}")
+    total = len(_CASES) + len(_RANK_CASES) + len(_COVER_CASES)
+    print(f"\n{total - failures}/{total} cases pass")
     return 1 if failures else 0
 
 

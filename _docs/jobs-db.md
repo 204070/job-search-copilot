@@ -169,14 +169,22 @@ section instead of six, and the marker needs no table of its own.
 The follow-up clock is 7 days after submission with no reply on record; only
 the suggestion is automatic, scheduling stays an explicit command.
 
-"Next roles" uses the same precedence as the scanner report (worldwide, unknown,
-region-gated, US-only), then score, and caps each employer at two rows so one
-company cannot fill the page. It applies the scanner's `MATCH_MIN_SCORE` default
-(15) as a floor, and uses `Matcher.admits()` rather than a private regex to
-decide whether a score-0 row is still a role worth reading: the two must not
-disagree about what a target role is. `region_gated` means the posting names
-countries, and is a prompt to read that list, not a verdict: EMEA includes
-Africa, so it is not a bar.
+"Next roles" uses the same order as the scanner report
+(`scanner.eligibility.scope_rank`, shared so the two cannot drift): worldwide,
+then a `region_gated` list that names a region you are in (EMEA, MEA, Africa),
+then `unknown`, then a list that names only other regions, then `us_only`. Score
+breaks the tie, and each employer is capped at two rows so one company cannot
+fill the page. It applies the scanner's `MATCH_MIN_SCORE` default (15) as a
+floor, and uses `Matcher.admits()` rather than a private regex to decide whether
+a score-0 row is still a role worth reading: the two must not disagree about
+what a target role is.
+
+`region_gated` means the posting names countries, and is a prompt to read that
+list, not a verdict: EMEA includes Africa, so it is not a bar, and it sorts
+above `unknown` for that reason. The same order decides the "nothing matched"
+table, which lists the newest score-0 rows first (recency is real ordering
+where a score of 0 is not) and omits any posting that already has an
+application.
 
 ## Conventions
 
