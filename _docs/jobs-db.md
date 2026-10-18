@@ -193,6 +193,15 @@ floor, and uses `Matcher.admits()` rather than a private regex to decide whether
 a score-0 row is still a role worth reading: the two must not disagree about
 what a target role is.
 
+An employer that has already received two applications inside seven days leaves
+the table entirely and appears under it as cooling down, with the date the
+window clears (`employer_cooldown`). Two applications make the case: a third
+inside the week reads as spraying, and it costs nothing to wait, because the
+employer's next requisition is worth more to them than our impatience. The rule
+is derived from `applications.applied_at` on every rewrite, so there is no flag
+to set and none to clear; a withdrawn or archived application does not count,
+and neither does a row still waiting to be submitted.
+
 `region_gated` means the posting names countries, and is a prompt to read that
 list, not a verdict: EMEA includes Africa, so it is not a bar, and it sorts
 above `unknown` for that reason. The same order decides the "nothing matched"

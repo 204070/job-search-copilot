@@ -93,6 +93,15 @@ RELEVANT_FLOOR = 15
 #: How many postings one employer may contribute to the shortlist.
 MAX_PER_EMPLOYER = 2
 
+#: After this many applications to one employer inside `COOLDOWN_DAYS`, the
+#: rest of that employer's board leaves the shortlist until the window clears.
+#: Two applications already say "I want to work here"; a third inside a week
+#: reads as spraying, and a fresh requisition is worth more to them than our
+#: impatience. Derived from `applications` on every rewrite, so nothing has to
+#: be set, and nothing has to be cleared afterwards.
+MAX_APPS_PER_EMPLOYER = 2
+COOLDOWN_DAYS = 7
+
 #: How many postings the shortlist shows.
 NEXT_ROLE_LIMIT = 12
 
@@ -114,6 +123,31 @@ def days_since(value: str | None, today: date) -> int | None:
     """Whole days from an ISO timestamp to `today`; None when unparseable."""
     moment = parse_iso(value)
     return None if moment is None else (today - moment.date()).days
+
+
+def employer_cooldown(
+    applied: list[tuple[str | None, int | None]],
+    max_apps: int = MAX_APPS_PER_EMPLOYER,
+    days: int = COOLDOWN_DAYS,
+) -> dict[str, tuple[int, int]]:
+    """Employers to leave alone for now, and for how much longer.
+
+    `applied` is one `(employer, whole days since it went out)` pair per
+    application; `None` days means we never sent it, so it does not count as
+    saying anything. An employer with `max_apps` or more inside `days` cools
+    down, and the window clears one week after the most recent of them, so the
+    answer is `{employer: (applications inside the window, days left)}`.
+
+    Derived on every call: the cooldown asks for no stored flag, which is why
+    it cannot go stale, and lifting it needs no cleanup.
+    """
+    recent: dict[str, list[int]] = {}
+    for employer, age in applied:
+        if not employer or age is None or age >= days:
+            continue
+        recent.setdefault(employer, []).append(age)
+    return {employer: (len(ages), days - min(ages))
+            for employer, ages in recent.items() if len(ages) >= max_apps}
 
 
 def follow_up_action(
@@ -436,7 +470,7 @@ def section_applications(apps, today: date) -> list[str]:
     return out
 
 
-def section_next_roles(conn) -> list[str]:
+def section_next_roles(conn, today: date) -> list[str]:
     """Section 4: bookmarked postings worth a look, and what the gate leaves out."""
     out = ["## 4. Next roles", ""]
     ranked = conn.execute(
@@ -444,6 +478,15 @@ def section_next_roles(conn) -> list[str]:
         " FROM jobs WHERE status = 'bookmarked'"
         "   AND id NOT IN (SELECT job_id FROM applications)").fetchall()
     matcher = _matcher()
+    # Employers we have already applied to twice inside the cooldown window. The
+    # rule lives in `employer_cooldown`, so it is one definition, tested once.
+    sent = [(r["company"], days_since(r["applied_at"], today))
+            for r in conn.execute(
+                "SELECT j.company AS company, a.applied_at AS applied_at"
+                " FROM applications a JOIN jobs j ON j.id = a.job_id"
+                " WHERE a.applied_at IS NOT NULL"
+                "   AND a.status NOT IN ('withdrawn', 'archived')").fetchall()]
+    cooling = employer_cooldown(sent)
     # Coverage-aware order from the classifier: a posting that names a region
     # we are in (EMEA, Africa) is better information than one that says
     # nothing, so it ranks above `unknown` rather than below it. Score breaks
@@ -458,6 +501,8 @@ def section_next_roles(conn) -> list[str]:
     for row in ranked:
         if (row["match_score"] or 0) < RELEVANT_FLOOR and not _admits(
                 matcher, row["title"]):
+            continue
+        if row["company"] in cooling:
             continue
         if per_employer.get(row["company"], 0) >= MAX_PER_EMPLOYER:
             continue
@@ -474,6 +519,27 @@ def section_next_roles(conn) -> list[str]:
     out += _table(["job", "role", "employer", "scope", "score"],
                   [[f"#{r['id']}", (r['title'] or '')[:42], r['company'],
                     r['region_scope'], r['match_score']] for r in top])
+
+    if cooling:
+        hidden = sum(
+            1 for r in ranked
+            if r["company"] in cooling
+            and ((r["match_score"] or 0) >= RELEVANT_FLOOR
+                 or _admits(matcher, r["title"])))
+        out += ["", f"**Cooling down.** {len(cooling)} employer(s) have "
+                f"{MAX_APPS_PER_EMPLOYER} or more applications inside "
+                f"{COOLDOWN_DAYS} days, so the rest of their boards waits "
+                f"({hidden} posting(s) left out of the table above). Two "
+                "applications already make the case; a fresh requisition is "
+                "worth more to them than our impatience:", ""]
+        cool_rows = []
+        for company, (n, left) in sorted(cooling.items(), key=lambda kv: -kv[1][1]):
+            clears = date.fromordinal(today.toordinal() + left)
+            cool_rows.append([company, str(n),
+                              clears.isoformat() if left else today.isoformat(),
+                              f"in {left} day(s)" if left else "today"])
+        out += _table(["employer", "applications", "next look", "clears"],
+                      cool_rows)
 
     total, empty, samples = _blind_spot(conn, exclude_ids={r["id"] for r in top})
     out += ["", f"**Nothing matched in {total} admitted postings.** The title "
@@ -621,7 +687,7 @@ def build_digest(conn: sqlite3.Connection, today: date | None = None,
     lines += section_since(conn, since)
     lines += section_needs_you(conn, apps, today)
     lines += section_applications(apps, today)
-    lines += section_next_roles(conn)
+    lines += section_next_roles(conn, today)
     lines += section_health(conn)
     lines += section_questions(conn)
     return "\n".join(lines)
@@ -865,8 +931,37 @@ def cmd_selftest() -> int:
             print(f"FAIL  todo_owner_label({owner!r}) = {got!r}, "
                   f"expected {expected!r}")
 
+    # The employer cooldown: two applications inside the week park the rest of
+    # that board, and the window clears a week after the most recent one. A
+    # single application, an old application, or an unsent draft says nothing.
+    cool_cases = [
+        ([("Acme", 1), ("Acme", 3)], {"Acme": (2, 6)},
+         "two inside the week park the board; six days left on the newest"),
+        ([("Acme", 0), ("Acme", 6)], {"Acme": (2, 7)},
+         "the window clears a week after the newest application"),
+        ([("Acme", 1)], {},
+         "one application is not a pattern"),
+        ([("Acme", 8), ("Acme", 2)], {},
+         "an application outside the window does not count toward it"),
+        ([("Acme", 8), ("Acme", 2), ("Acme", 1)], {"Acme": (2, 6)},
+         "only the applications inside the window count"),
+        ([("Acme", None), ("Acme", 1)], {},
+         "an application that was never sent says nothing"),
+        ([("", 1), ("Acme", 1)], {},
+         "a posting with no employer resolved cannot be parked"),
+        ([("Acme", 3), ("Acme", 1), ("Other", 2), ("Other", 4)],
+         {"Acme": (2, 6), "Other": (2, 5)},
+         "each employer keeps its own window"),
+    ]
+    for applied, expected, why in cool_cases:
+        got = employer_cooldown(applied)
+        if got != expected:
+            failures += 1
+            print(f"FAIL  employer_cooldown: {why}\n"
+                  f"      expected {expected!r}\n      got      {got!r}")
+
     total = (len(cases) + 2 + len(rank_cases) + 1 + len(order_cases)
-             + len(label_cases))
+             + len(label_cases) + len(cool_cases))
     print(f"{total - failures}/{total} cases pass")
     return 1 if failures else 0
 

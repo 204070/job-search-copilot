@@ -15,7 +15,12 @@
 - **Target:** senior remote full-stack (React/TS, Node, Python), plus
   Engineering Manager, Product Engineer, Forward Deployed Engineer, Solutions
   Architect and AI/LLM Engineer roles (18/10, when they went into the gate);
-  scored via `scanner/keywords.jsonc`. Resume reality (gitignored detail in
+  scored via `scanner/keywords.jsonc`. **Leading teams is real, not a stretch
+  (stated 18/10):** Engineering Manager is therefore a live target rather than a
+  hopeful one, and the specifics (which team, how many engineers, over what
+  period) still have to be recorded in `artifacts/profile.jsonc` — no
+  application may state a figure until they are. Resume reality (gitignored
+  detail in
   `artifacts/profile.jsonc`): 7+ yrs fullstack, TS/Node + Postgres, Django/
   Python, AWS→Azure, PCI DSS, fintech. **Resume is a floor, not a ceiling:**
   also Cassandra, ClickHouse, Heroku/Vercel/Netlify/Cloudflare, bare-metal and
