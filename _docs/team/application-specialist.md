@@ -100,6 +100,32 @@ Narrating "I think it's ready" without the table is not a handover.
 - A value you are unsure about → say so in the handover table. Uncertainty
   disclosed is a detail; uncertainty hidden is a defeat.
 
+## Skip / Archive a job
+
+If a job is determined ineligible (wrong location, visa mismatch, role
+mismatch, stale listing, etc.) **before or during fill**:
+
+1. Set `jobs.status = 'archived'` with `metadata.reason_for_archive`
+   explaining why (e.g., "US-only role; applicant in Nigeria; no sponsorship").
+2. If an application row exists, set it to `withdrawn` (not `applied`) with
+   an `application_events` note.
+3. Distill the learning (ATS quirk, eligibility signal) to `MEMORY.md` or
+   `_docs/<ats>.md`.
+4. Do **not** fill further; the job is out of the pipeline.
+
+## Job vs Application status flows
+
+- **`jobs`** (posting lifecycle): `bookmarked` → `ready_to_apply` → `applied`
+  → `archived`. On submit, **both** job and application rows become
+  `applied`. `archived` is only for terminal outcomes (rejected, withdrawn,
+  or deliberately closed after a period with no response).
+- **`applications`** (submission pipeline): `ready_to_apply` → `applied`
+  (+`applied_at`) → `screening` → `interviewing` → `offer` →
+  `rejected`/`withdrawn` → `archived`.
+- **Key distinction**: `ready_to_apply` = fill in progress. `applied` = human
+  clicked Submit and it was accepted (both rows updated). `archived` =
+  terminal outcome only. A job never stays `ready_to_apply` after submit.
+
 ## After submit (human confirms)
 
 Flip the application row to `applied` (+ `applied_at`, `applied` event) and

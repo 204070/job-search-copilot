@@ -54,7 +54,7 @@ CREATE TABLE jobs (
     -- The job's own lifecycle, independent of any application.
     status TEXT NOT NULL DEFAULT 'bookmarked'
         CHECK (
-            status IN ('bookmarked', 'ready_to_apply', 'archived')
+            status IN ('bookmarked', 'ready_to_apply', 'applied', 'archived')
         ),
     created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),
     updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now')),

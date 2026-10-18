@@ -30,14 +30,16 @@ All future schema changes go in new numbered files on top of the baseline
 | Table | Purpose |
 |---|---|
 | `boards` | Job boards / sources (`kind`: job_board, careers_page, rss, referral, agency, other); `last_checked_at` = last scrape/refresh (null until first); `metadata` JSON |
-| `jobs` | Postings: `status` ∈ bookmarked → ready_to_apply → archived; `workplace_type` ∈ remote, hybrid, onsite, unknown (default unknown); nullable `match_score` 0–100; salary range pair; `metadata` JSON |
-| `applications` | One per submission: `status` ∈ ready_to_apply, applied, screening, interviewing, offer, rejected, withdrawn, archived; `applied_at`, method, resume/cover-letter variants, referrer, notes; `metadata` JSON |
+| `jobs` | Postings: `status` ∈ bookmarked → ready_to_apply → applied → archived; `workplace_type` ∈ remote, hybrid, onsite, unknown (default unknown); nullable `match_score` 0–100; salary range pair; `metadata` JSON (include `reason_for_archive` when archived) |
+| `applications` | One per submission: `status` ∈ ready_to_apply → applied → screening → interviewing → offer → rejected/withdrawn → archived; `applied_at` set on `applied` transition; method, resume/cover-letter variants, referrer, notes; `metadata` JSON |
 | `application_events` | Append-only timeline: status_change, applied, follow_up, interview, offer, rejection, withdrawal, note; `occurred_at` + optional `scheduled_for`; `metadata` JSON |
 | `schema_migrations` | Applied filenames, owned by the runner |
 
 Deleting a job cascades to its applications and events. Statuses are separate
-by design: `jobs.status` is the board column, `applications.status` is the
-pipeline — a job sits in `bookmarked` while its application (if any) advances.
+by design: `jobs.status` tracks the posting lifecycle (board column),
+`applications.status` tracks the submission pipeline. On submit, **both**
+`jobs.status` and `applications.status` become `applied`. `archived` is only
+for terminal outcomes (rejected, withdrawn, or deliberately closed).
 
 ## Scanning features (also consolidated into the baseline)
 

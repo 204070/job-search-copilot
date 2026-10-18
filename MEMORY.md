@@ -38,6 +38,7 @@
 
 ## Learnings (conversion, content, what works)
 
+- Always check location + sponsorship before filling; archive early with `reason_for_archive` in job metadata.
 - Full semi-auto loop validated 17/10 (Fingerprint, applied): the runbook in
   `_docs/team/application-specialist.md` is proven — form bypass → agent
   fill → base64 resume embed → human review + reCAPTCHA + Submit →
