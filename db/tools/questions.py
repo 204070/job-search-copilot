@@ -126,6 +126,13 @@ def record(conn: sqlite3.Connection, args: argparse.Namespace) -> int:
                 " flag if this question is not tied to a specific application."
             )
 
+    if args.promotes_to is not None and args.clear_promotes_to:
+        raise SystemExit("--promotes-to and --clear-promotes-to are mutually exclusive")
+    # `--clear-promotes-to` is the inverse of `--promotes-to`: a question that
+    # looked like a profile fact but turned out to be answered case by case
+    # (compensation expectations) should go back to being bank-only.
+    promotes_to = None if args.clear_promotes_to else args.promotes_to
+
     row: sqlite3.Row | None = None
     if args.key:
         row = conn.execute(
@@ -162,7 +169,7 @@ def record(conn: sqlite3.Connection, args: argparse.Namespace) -> int:
                 args.reasoning,
                 args.source or ("answer_bank" if args.answer else None),
                 json.dumps(aliases),
-                args.promotes_to,
+                promotes_to,
                 args.status,
                 "{}",
             ),
@@ -183,10 +190,11 @@ def record(conn: sqlite3.Connection, args: argparse.Namespace) -> int:
             ("answer", args.answer),
             ("reasoning", args.reasoning),
             ("answer_source", args.source),
-            ("promotes_to", args.promotes_to),
         ):
             if value is not None:
                 updates[field] = value
+        if args.promotes_to is not None or args.clear_promotes_to:
+            updates["promotes_to"] = promotes_to
         if args.status != "draft":
             updates["status"] = args.status
         assignments = ", ".join(f"{name} = ?" for name in updates)
@@ -833,6 +841,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--reasoning", help="why this answer; the part to not lose")
     p.add_argument("--source", help="answer_source, e.g. 'profile:$.compensation_expectation'")
     p.add_argument("--promotes-to", dest="promotes_to", help="profile.jsonc path to promote to")
+    p.add_argument(
+        "--clear-promotes-to", dest="clear_promotes_to", action="store_true",
+        help="drop a promotion that turned out to be answered case by case",
+    )
     p.add_argument("--status", choices=STATUSES, default="draft")
     p.add_argument("--alias", action="append", default=[], help="alternative wording (repeatable)")
     p.add_argument("--label", help="this form's exact field label (added as an alias)")

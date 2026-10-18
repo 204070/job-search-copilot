@@ -109,7 +109,9 @@ Narrate the full form state as a table — field, value, source
   Omit `--key`/`--question` only when you are creating a genuinely new question.
   Answers that came from `profile.jsonc` get
   `--source 'profile:<path>'`; new facts the question surfaced get
-  `--promotes-to '<path>'` and show up in `questions promotions`.
+  `--promotes-to '<path>'` and show up in `questions promotions`. If a flag
+  turns out to be wrong (an answer that is really case by case, not one fact),
+  drop it with `--clear-promotes-to` and put the reason in `--reasoning`.
 
 You never click Submit. You never touch the captcha except to point at it.
 Narrating "I think it's ready" without the table is not a handover.

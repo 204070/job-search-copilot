@@ -100,7 +100,7 @@ The CLI is `python3 -m db.tools.questions`:
 | Command | What it does |
 |---|---|
 | `lookup "<label>"` | Best canonical matches for a form's wording, with answer + reasoning + frequency. `--kind technical`, `--evidence`. Exit 1 on a miss |
-| `record` | Upsert the canonical question and append one instance (`--key`, `--label`, `--option`, `--field-type`, `--required`, `--answer-given`, `--job-id`, `--application-id`, `--source`, `--promotes-to`, `--alias`) |
+| `record` | Upsert the canonical question and append one instance (`--key`, `--label`, `--option`, `--field-type`, `--required`, `--answer-given`, `--job-id`, `--application-id`, `--source`, `--promotes-to`, `--clear-promotes-to`, `--alias`) |
 | `frequency` | Every question by times asked (`--kind`, `--min-count`) |
 | `promotions` | Facts with a `promotes_to` path not yet in `profile.jsonc` |
 | `digest --kind application\|technical` | Regenerate a FAQ doc (`--out PATH`, else stdout) |
@@ -110,6 +110,13 @@ The CLI is `python3 -m db.tools.questions`:
 `digest`, not hand-written. Record answers with `record`, then regenerate. The
 awkward case worth naming: a question a form phrases with no words in common
 with the canonical text misses until you add that phrasing as an `--alias`.
+
+`promotes_to` marks a question whose answer looks like it belongs in
+`profile.jsonc`. When that turns out to be wrong — compensation expectations,
+say, which are answered case by case rather than as one fixed fact — drop the
+flag with `--clear-promotes-to` rather than leaving `promotions` listing it
+forever. Put the reasoning for the reversal in the same `record` call so the
+next reader learns from it.
 
 ## Conventions
 
