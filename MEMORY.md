@@ -94,6 +94,12 @@
   list also predates the verified skills surface (no NestJS, Bun, ClickHouse,
   Supabase, Azure/GCP, Ansible, Pulumi, Jenkins). Fixing the gate needs a
   re-scoring pass, because `upsert_job` only refreshes `last_seen_at`.
+- **An Ashby employer screens from its board index (18/10).** The board page
+  lists every posting with its structured location, so eligibility for a whole
+  company is one page read and the Location check becomes cheap enough to do
+  even when a role looks obvious. A second posting at the same employer is not a
+  copy of the first (the follow-up form dropped one required textarea and added
+  two other fields), so fields get enumerated every time.
 - **An ATS form has no draft.** A session tab that returns to `about:blank`
   loses every field. Fill in one pass and hand over for submission at once.
   Ids also regenerate per load on Ashby. Details: `_docs/tooling.md`.

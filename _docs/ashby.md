@@ -22,6 +22,13 @@ never canonical; each posting's lists differ.
 - Ashby's `Location` is a structured employer field, not marketing copy, and
   it is what the ATS shows recruiters. Where it disagrees with the posting
   text, the field wins.
+- **Screen a whole employer from its board index, before opening anything.**
+  `jobs.ashbyhq.com/<org>` lists every open posting as
+  `Department • Location • Employment type`, so one page read gives the
+  structured location for all of them (`Remote, Global` vs `Remote, AMER` vs
+  `Remote, EMEA`). On the 18/10 sweep every posting carried a location, so
+  screening a company costs one page instead of one posting at a time, and it
+  makes the Location check cheap enough to do even when a role looks obvious.
 - Worked case (18/10/2026, job #485): a Senior Full Stack listing on a remote
   board said "work from anywhere in the world as long as your main location is
   between UTC-4 and UTC+4" (a UTC+1 location sits inside that band, so it read
@@ -40,6 +47,12 @@ never canonical; each posting's lists differ.
 
 An optional **"Autofill from resume"** panel sits above the form (its own file
 input + `Upload file` button) and can populate the system fields.
+
+**A second posting at the same employer is not a copy of the first.** The
+follow-up form at the same company (#509, same day) dropped the tech textarea,
+added a required async/remote textarea and an optional `Twitter / X profile`,
+and turned the "where did you hear" radio set into a free-text input. Same
+employer, same ATS, different form: enumerate the fields every time.
 
 | field | control | value used |
 |---|---|---|
