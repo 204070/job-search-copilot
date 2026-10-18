@@ -15,7 +15,11 @@
 - **Target:** senior remote full-stack (React/TS, Node, Python); scored via
   `scanner/keywords.jsonc`. Resume reality (gitignored detail in
   `artifacts/profile.jsonc`): 7+ yrs fullstack, TS/Node + Postgres, Django/
-  Python, Go, AWS→Azure, PCI DSS, fintech.
+  Python, AWS→Azure, PCI DSS, fintech. **Resume is a floor, not a ceiling:**
+  also Cassandra, ClickHouse, Heroku/Vercel/Netlify/Cloudflare, bare-metal and
+  VPS deployments with Dokploy/Coolify/Kamal, Terraform/Ansible/GitHub
+  Actions/Jenkins. Go is real but at side-project and exploration level, not
+  enterprise production — keep it general when writing answers.
 - **Eligibility:** `jobs.region_scope` (worldwide / us_only / region_gated /
   unknown) tags where a posting says it will hire; `us_only` is the only real
   bar. Detail: `_docs/scanning.md` → "Region scope".
@@ -52,6 +56,16 @@
 
 ## Learnings (conversion, content, what works)
 
+- **The resume is a floor, not a ceiling (18/10).** A technical answer drafted
+  from `resume.pdf` alone seriously undersold the candidate: the resume omits
+  Cassandra, ClickHouse, Heroku/Vercel/Netlify/Cloudflare, bare-metal with
+  Dokploy/Coolify/Kamal, and most of the AWS/Azure/GCP surface. Ask for the
+  real tech surface before writing any technical or infrastructure answer, then
+  keep claims calibrated the other way too (Go: general side-project and
+  exploration experience, not enterprise production).
+- **An ATS form has no draft.** A session tab that returns to `about:blank`
+  loses every field. Fill in one pass and hand over for submission at once.
+  Ids also regenerate per load on Ashby. Details: `_docs/tooling.md`.
 - **Verify eligibility on the EMPLOYER's page, not the board's copy (18/10).**
   Toggl's Senior Full Stack role read "anywhere in the world (UTC-4..UTC+4)" on
   We Work Remotely and the scanner tagged it `worldwide`, but Toggl's own Ashby

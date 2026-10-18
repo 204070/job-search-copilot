@@ -71,10 +71,31 @@ input + `Upload file` button) and can populate the system fields.
   Ashby custom questions are read by engineers, so name concrete systems, not
   adjectives.
 - The tech textarea here asked specifically about **Go, Typescript, Databases,
-  IaC** — address each of the four in order, lead with the strongest, and do
-  not overstate Go (TypeScript is the strongest language; say so).
+  IaC** — address each of the four in order and lead with the strongest.
+- **The resume is a floor, not a ceiling. Ask the person for their real tech
+  surface before writing this one.** Drafting from `resume.pdf` alone once
+  undersold badly: the resume omits Cassandra, ClickHouse,
+  Heroku/Vercel/Netlify/Cloudflare, bare-metal deployments with
+  Dokploy/Coolify/Kamal, and most of the AWS/Azure/GCP surface. The candidate
+  knows what they have done; the resume does not.
+- **Go: keep it deliberately general.** Side projects and exploration
+  (microservices, observability tooling), not enterprise production. Do not
+  write a list of concurrency primitives as though they were production
+  experience; say TypeScript is the strongest language and that Go is welcome.
 - Open source: check `https://api.github.com/users/<handle>/repos` before
-  answering. Point at real public repos; a fork is not a contribution.
+  answering. Point at real public repos; a fork is not a contribution. Do not
+  offer a small public repo as evidence of infrastructure depth — say what it
+  actually is (e.g. a small Pulumi example) and let it stand only where the
+  tooling itself is the point.
+- Field ids change per page load (see `_docs/tooling.md`): prefer stable suffix
+  selectors such as `label[for$="-labeled-radio-5"]`.
+
+## Session fragility
+
+The tab can come back as `about:blank` between turns, and Ashby keeps no
+server-side draft, so a lost tab loses the entire fill. Fill in one pass, then
+hand over for immediate review and submission. Re-read `tab list` before
+resuming. Details and guards: `_docs/tooling.md`.
 
 ## Human-only
 
