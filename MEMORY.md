@@ -36,9 +36,11 @@
   `sent` / `revised`, derived from the instance ledger, never approved by hand);
   `artifacts/faqs/*.md` are generated from it (`digest`).
 - **Review digest:** `python3 -m db.tools.review` rewrites the one living file
-  `artifacts/review.md` (private, gitignored): what changed since last time,
-  follow-ups due, applications, next roles, pipeline health, question-bank
-  drafts. Detail: `_docs/jobs-db.md`.
+  `artifacts/review.md` (private, gitignored): your own open actions, what
+  changed since last time, follow-ups due, applications, next roles, pipeline
+  health, the bank's state. Every line is derived from a row except the `todos`
+  store, which exists for the actions that have no row behind them
+  (`todo --add` / `--close`). Detail: `_docs/jobs-db.md`.
 - **Current phase:** semi-automatic applications — agent drafts/fills, human
   reviews & submits. Runbook: `_docs/team/application-specialist.md`.
 - **Tool:** OpenCLI Browser Bridge drives my real Chrome (always
@@ -89,7 +91,11 @@
   from the instance ledger (`unsent` / `sent` / `revised` / `retired`) and
   nothing approves anything. Two rules: if an action has no command, the action
   never gets recorded; and a state that can be derived must never be certified
-  by hand, because the certificate outlives the truth it stood for.
+  by hand, because the certificate outlives the truth it stood for. The one
+  exception proves the rule: an action with no row behind it at all ("create the
+  resume variant") has nothing to be derived from, so it needed a store of its
+  own (`todos`, `review todo --add` / `--close`) rather than a line in the file.
+  The page still holds nothing; the row does, and closing it is the lifecycle.
 - **The resume is a floor, not a ceiling (18/10).** A technical answer drafted
   from `resume.pdf` alone seriously undersold the candidate: the resume omits
   Cassandra, ClickHouse, Heroku/Vercel/Netlify/Cloudflare, bare-metal with
