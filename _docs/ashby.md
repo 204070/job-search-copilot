@@ -22,21 +22,21 @@ never canonical; each posting's lists differ.
 - Ashby's `Location` is a structured employer field, not marketing copy, and
   it is what the ATS shows recruiters. Where it disagrees with the posting
   text, the field wins.
-- Worked case (18/10/2026): the Toggl Senior Full Stack listing on We Work
-  Remotely said "work from anywhere in the world as long as your main location
-  is between UTC-4 and UTC+4" (a UTC+1 location sits inside that band, so it
-  read as eligible, and the scanner tagged it `worldwide` from that sentence).
-  Toggl's own Ashby page listed `Serbia; Croatia; France; Poland; Portugal;
+- Worked case (18/10/2026, job #485): a Senior Full Stack listing on a remote
+  board said "work from anywhere in the world as long as your main location is
+  between UTC-4 and UTC+4" (a UTC+1 location sits inside that band, so it read
+  as eligible, and the scanner tagged it `worldwide` from that sentence). The
+  employer's own Ashby page listed `Serbia; Croatia; France; Poland; Portugal;
   Spain`. The candidate's country is not in that list → **not eligible**,
   caught only because the form was opened. The job was archived with
   `reason_for_archive` in `jobs.metadata`.
-- The inverse also holds: Supabase's `Location` read `Remote, Global`, which
-  matches its "We hire globally" copy → apply.
+- The inverse also holds (job #539, `Location: Remote, Global`, matching the
+  employer's "we hire globally" copy) → apply.
 - Rule of thumb: an aggregator's (WWR, Real Work From Anywhere, RemoteOK,
   Jobicy) location text is a HINT; the employer's Ashby/Greenhouse field is the
   fact. Never fill six fields before checking the one that decides it.
 
-## Field inventory (worked example: Supabase, job #539, 18/10/2026)
+## Field inventory (worked example: job #539, 18/10/2026)
 
 An optional **"Autofill from resume"** panel sits above the form (its own file
 input + `Upload file` button) and can populate the system fields.
@@ -74,12 +74,13 @@ input + `Upload file` button) and can populate the system fields.
 - The tech textarea here asked specifically about **Go, Typescript, Databases,
   IaC** — address each of the four, leading with TypeScript (the strongest).
 - **If the employer ships something the person has actually used, say so
-  outright, in the paragraph it belongs to.** Applying to Supabase, the
-  Databases paragraph leads with Supabase Auth, Row Level Security and Realtime
-  websockets wired into NestJS services, because that is this company's product
-  and the part of the role the person is closest to. Said plainly it reads as
-  use of *their* system; said vaguely it is one more PostgreSQL claim in a stack
-  of them. Ask at intake what the person has run on the employer's own platform.
+  outright, in the paragraph it belongs to.** Applying to the database-platform
+  role (#539), the Databases paragraph led with Auth, Row Level Security and
+  Realtime websockets wired into NestJS services, because those are that
+  company's own product and the part of the role the person is closest to. Said
+  plainly it reads as use of *their* system; said vaguely it is one more
+  PostgreSQL claim in a stack of them. Ask at intake what the person has run on
+  the employer's own platform.
 - **The resume is a floor, not a ceiling. Ask the person for their real tech
   surface before writing this one.** Drafting from `resume.pdf` alone once
   undersold badly: the resume omits Cassandra, ClickHouse,

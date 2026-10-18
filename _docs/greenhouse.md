@@ -6,7 +6,7 @@ to one form — never canonical; each posting's lists differ.
 
 ## Finding the real form
 
-- Custom careers sites (e.g. Fingerprint's Astro site) embed the form as a
+- Custom careers sites (e.g. an Astro-based company site) embed the form as a
   cross-origin iframe. If the site's Apply button is inert (no network/console
   activity), eval `[...document.querySelectorAll("iframe")].map(f=>f.src)` and
   open the `job-boards.greenhouse.io/embed/job_app?...&token=<gh_jid>` URL
@@ -41,7 +41,7 @@ to one form — never canonical; each posting's lists differ.
   entries; the national number goes into `#phone` via `fill`.
 - "Toggle flyout" button clicks do nothing; focus/type/keys opens the menu.
 
-## Adapting profile facts (example: Fingerprint gh_jid 6188234004, 17/10/2026)
+## Adapting profile facts (worked example: gh_jid 6188234004, 17/10/2026)
 
 - Country of legal residence was a curated 16-country list +
   `OTHER / NOT LISTED`; Nigeria absent → truthful pick OTHER / NOT LISTED.

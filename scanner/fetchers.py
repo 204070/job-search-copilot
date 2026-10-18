@@ -560,11 +560,11 @@ def split_company(title: str) -> tuple[str | None, str]:
     Returns (company, cleaned title). Feeds that omit an employer tag put it in
     the title instead, in one of two shapes:
 
-        "Backend Engineer, Core APIs at Fingerprint"    -> ("Fingerprint", "Backend Engineer, Core APIs")
-        "bondex: Fullstack Web3 Engineer (Solidity)"    -> ("bondex", "Fullstack Web3 Engineer (Solidity)")
+        "Backend Engineer, Core APIs at Northwind"    -> ("Northwind", "Backend Engineer, Core APIs")
+        "acmecorp: Fullstack Web3 Engineer (Solidity)" -> ("acmecorp", "Fullstack Web3 Engineer (Solidity)")
 
     Only applies when the other half reads like a role, so a colon in an
-    ordinary title ("Sigma: Series B") is left alone.
+    ordinary title ("Q3 Update: Series B") is left alone.
     """
     text = " ".join((title or "").split())
     match = re.match(r"^(?P<c>[^:]{2,40}):\s*(?P<t>\S.*)$", text)

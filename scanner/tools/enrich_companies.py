@@ -6,8 +6,8 @@
     python3 -m scanner.tools.enrich_companies --limit 50
 
 Real Work From Anywhere and We Work Remotely publish no employer tag — the
-company rides in the title ("Backend Engineer, Core APIs at Fingerprint",
-"bondex: Fullstack Web3 Engineer"). Stored as `Unknown`, those rows are
+company rides in the title ("Backend Engineer, Core APIs at Northwind",
+"acmecorp: Fullstack Web3 Engineer"). Stored as `Unknown`, those rows are
 invisible to any board that looks a lead up by company, which is most of them.
 
 This reads the two title shapes `fetchers.split_company` handles and fills the
