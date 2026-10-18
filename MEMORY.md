@@ -12,8 +12,10 @@
 
 - **Resumes:** uploadables in `artifacts/` (canonical `resume.pdf`;
   generated fallback `generated/resume-generated.pdf`).
-- **Target:** senior remote full-stack (React/TS, Node, Python); scored via
-  `scanner/keywords.jsonc`. Resume reality (gitignored detail in
+- **Target:** senior remote full-stack (React/TS, Node, Python), plus
+  Engineering Manager, Product Engineer, Forward Deployed Engineer, Solutions
+  Architect and AI/LLM Engineer roles (18/10, when they went into the gate);
+  scored via `scanner/keywords.jsonc`. Resume reality (gitignored detail in
   `artifacts/profile.jsonc`): 7+ yrs fullstack, TS/Node + Postgres, Django/
   Python, AWS→Azure, PCI DSS, fintech. **Resume is a floor, not a ceiling:**
   also Cassandra, ClickHouse, Heroku/Vercel/Netlify/Cloudflare, bare-metal and
@@ -96,6 +98,16 @@
   resume variant") has nothing to be derived from, so it needed a store of its
   own (`todos`, `review todo --add` / `--close`) rather than a line in the file.
   The page still holds nothing; the row does, and closing it is the lifecycle.
+- **The scorer's blind spot was role families, twice (18/10).** First a fixed
+  nine-phrase title gate that zeroed whole engineering families, then a blanket
+  `\bmanager\b` veto that swept Engineering Manager out along with the marketing
+  and sales managers it was aimed at, and a keyword list with no AI vocabulary
+  at all while the titles arriving were AI Engineer and LLM Engineer. The gate
+  is a pair of readable lists now: the vetoes name kinds rather than a whole
+  word, and `ai`, `llm`, `rag`, `nigeria` and `lagos` score. The promoted
+  families are the check: the re-score moved 106 rows and put four
+  Engineering Manager roles that had scored 0 into the lead band. Anything the
+  person names as a target belongs in `keywords.jsonc`, not in a chat thread.
 - **The resume is a floor, not a ceiling (18/10).** A technical answer drafted
   from `resume.pdf` alone seriously undersold the candidate: the resume omits
   Cassandra, ClickHouse, Heroku/Vercel/Netlify/Cloudflare, bare-metal with
