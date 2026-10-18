@@ -47,11 +47,12 @@ to one form — never canonical; each posting's lists differ.
   lookup silently finds nothing.
 - City-style comboboxes lazy-load: no options render until filter text is
   entered.
-- The School field is an async combobox over a PARTIAL list: the board's
-  schools endpoint reports 2466 schools at 100 per page and ignores the query
-  string, so the widget filters only the slice it has loaded (A names on
-  18/10/2026) and a non-US school can be unselectable at any spelling. It is
-  optional on these forms; report it rather than forcing a pick.
+- The School field is an async combobox over a partial list that also has gaps:
+  the board's schools endpoint is 2466 schools at 100 per page and ignores the
+  query string, so the widget filters only what it has loaded — and a scan of
+  all 25 pages found no Nigerian school at all. A Nigerian applicant cannot pick
+  their university at any spelling. The field is optional on these forms; report
+  that rather than substituting a school that is not theirs.
 - The phone widget's dial-code combobox is `#country` (react-select classes
   plus the flag), NOT a country-of-residence question. Set it through
   intl-tel-input's own dropdown: `click '.iti__selected-country'`, `fill

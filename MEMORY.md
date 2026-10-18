@@ -290,8 +290,8 @@
   `closest('[class*=select]')` matches the input itself, so the single-value
   lookup finds nothing and every field reads as uncommitted, including ones that
   are set. Recipe and guards: `_docs/greenhouse.md`. Same sitting, same shape of
-  problem: the board's school picker exposes only the first page of its
-  2466-school list and ignores the query string, so a non-US university cannot
-  be picked at any spelling. The field was optional, the resume carried the
-  education, and saying so was better than substituting a school that is not
+  problem: one board's school picker is backed by a list of 2466 schools, and all
+  25 pages of it contain no Nigerian school at all, so the person's university
+  cannot be picked at any spelling. The field was optional, the resume carried
+  the education, and saying so was better than substituting a school that is not
   theirs.
