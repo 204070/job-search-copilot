@@ -79,6 +79,27 @@
 
 ## Learnings (conversion, content, what works)
 
+- **An aggregator row is not evidence of where a posting hires (18/10).** Three
+  of the six best-looking leads in one sitting had an empty `location` and were
+  gated in fact: the employer's own posting said USA/Canada, a single country,
+  or "you are based in the US, travel within a day". Two others were genuinely
+  worldwide, and both said so in a structured field the aggregator never
+  carried (`Anywhere`; "based elsewhere, you'll be hired via our global employer
+  partner"). Ashby and Greenhouse both publish the whole board as JSON
+  (`api.ashbyhq.com/posting-api/job-board/<slug>`,
+  `boards-api.greenhouse.io/v1/boards/<slug>/jobs`), so verifying an employer
+  costs one fetch, not a browser session, and the board also reveals when the
+  role we hold has been replaced by a different one. Write the employer's own
+  value into `jobs.location` and let `classify` derive the tag from it; keep the
+  provenance in `jobs.metadata.employer_ad`.
+- **Widening the gate revealed gating, not options (18/10).** Of 40 postings
+  matching the newly-added role families, the AI and forward-deployed ones were
+  almost all US-resident, single-country or region-list-only, and the eligible
+  remainder were leadership roles asking for prior people management — a fact
+  the profile does not carry at all. The honest answer was a senior IC role
+  outside the new families. Buying a wider net is only half a decision; the
+  other half is what the net comes back with, and that is worth reporting to the
+  person rather than working around.
 - **A derived view must not hold state (18/10).** The digest could remind but
   never clear: what the person had already dealt with lived in nobody's records,
   so the same items reappeared. A lead read and rejected had no command at all,
