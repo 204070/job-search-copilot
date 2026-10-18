@@ -858,6 +858,13 @@ def cmd_submitted(conn: sqlite3.Connection, args: argparse.Namespace) -> int:
         " metadata = json_set(coalesce(metadata, '{}'), '$.form_state',"
         " 'submitted'), updated_at = strftime('%Y-%m-%dT%H:%M:%SZ','now')"
         " WHERE id = ?", (when, args.method, args.app))
+    # The posting moves too: the runbook's status flows say a submitted
+    # application is `applied` on both rows, and a job left at `bookmarked`
+    # after its application went out is a lead the digest will offer again.
+    conn.execute(
+        "UPDATE jobs SET status = 'applied', updated_at ="
+        " strftime('%Y-%m-%dT%H:%M:%SZ','now')"
+        " WHERE id = (SELECT job_id FROM applications WHERE id = ?)", (args.app,))
     if args.confirmation:
         conn.execute(
             "UPDATE applications SET metadata = json_set(metadata,"

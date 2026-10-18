@@ -235,9 +235,10 @@ python3 -m db.tools.review submitted --app 6 --method online_form \
     --note "the one line the digest shows" --details "the longer version"
 ```
 
-It refuses to record the same application twice, so a re-run cannot restart the
-clock, and it prints the `questions record --answer-given` line for anything
-that went out differently from the bank. Then distill: the general learning goes
+It moves both rows (`applications` to `applied` with `applied_at`, the posting
+to `applied`), refuses to record the same application twice so a re-run cannot
+restart the clock, and prints the `questions record --answer-given` line for
+anything that went out differently from the bank. Then distill: the general learning goes
 to `MEMORY.md`, the ATS- or tooling-specific correction to `_docs/<ats>.md` or
 `_docs/tooling.md`.
 
