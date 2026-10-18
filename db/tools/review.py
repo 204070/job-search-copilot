@@ -823,6 +823,62 @@ def cmd_reply(conn: sqlite3.Connection, args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_submitted(conn: sqlite3.Connection, args: argparse.Namespace) -> int:
+    """Record that the user sent the application.
+
+    The counterpart of `reply`: this one is OUR event, so it does not stop the
+    chase clock, it starts it. It refuses a second recording, because a second
+    `applied` event reads as a second submission and would restart the clock
+    every time the command was run.
+
+    Every private value is an argument (confirmation link, date, method, the
+    line that shows in the digest), so the code stays generic and the facts stay
+    in the gitignored database.
+    """
+    row = conn.execute(
+        "SELECT a.id, a.status, a.method, j.company, j.title FROM applications a"
+        " JOIN jobs j ON j.id = a.job_id WHERE a.id = ?", (args.app,)).fetchone()
+    if row is None:
+        print(f"no application #{args.app}")
+        return 1
+    already = conn.execute(
+        "SELECT occurred_at FROM application_events WHERE application_id = ?"
+        " AND event_type = 'applied' ORDER BY id LIMIT 1", (args.app,)).fetchone()
+    if already is not None:
+        print(f"application #{args.app} ({row['company']}) is already recorded as"
+              f" submitted ({already['occurred_at']}); nothing changed")
+        return 1
+    when = args.date or datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    summary = args.note or (
+        "Submitted by the user"
+        + ("; confirmation page reached" if args.confirmation else ""))
+    conn.execute(
+        "UPDATE applications SET status = 'applied', applied_at = ?,"
+        " method = coalesce(?, method),"
+        " metadata = json_set(coalesce(metadata, '{}'), '$.form_state',"
+        " 'submitted'), updated_at = strftime('%Y-%m-%dT%H:%M:%SZ','now')"
+        " WHERE id = ?", (when, args.method, args.app))
+    if args.confirmation:
+        conn.execute(
+            "UPDATE applications SET metadata = json_set(metadata,"
+            " '$.confirmation_url', ?) WHERE id = ?", (args.confirmation, args.app))
+    conn.execute(
+        "INSERT INTO application_events (application_id, event_type, from_status,"
+        " to_status, occurred_at, summary, details) VALUES (?, 'applied', ?,"
+        " 'applied', ?, ?, ?)",
+        (args.app, row["status"], when, summary, args.details))
+    conn.commit()
+    print(f"application #{args.app} ({row['company']}): {row['status']} -> applied,"
+          f" submitted {when}")
+    print(f"  {summary}")
+    print("  chase clock running. Anything sent that differs from the bank goes in"
+          " as an instance:")
+    print("  python3 -m db.tools.questions record --key <question>"
+          " --answer-given \"<what went out>\" --application-id"
+          f" {args.app}")
+    return 0
+
+
 def cmd_resolve(conn: sqlite3.Connection, args: argparse.Namespace) -> int:
     row = conn.execute(
         "SELECT id, application_id, scheduled_for, summary FROM application_events"
@@ -1053,6 +1109,17 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--details", help="the longer version")
     p.add_argument("--date", help="when it arrived (default: now)")
     p.set_defaults(func=cmd_reply)
+
+    p = sub.add_parser("submitted", help="record that the user sent the application")
+    p.add_argument("--app", type=int, required=True, help="application id")
+    p.add_argument("--method", choices=("online_form", "email", "referral",
+                                        "linkedin", "recruiter", "other"),
+                   help="how it went out (default: whatever the row already says)")
+    p.add_argument("--confirmation", help="confirmation URL or reference")
+    p.add_argument("--note", help="the one line that shows in the digest")
+    p.add_argument("--details", help="the longer version")
+    p.add_argument("--date", help="when it was sent (default: now)")
+    p.set_defaults(func=cmd_submitted)
 
     p = sub.add_parser("resolve", help="mark a scheduled follow-up as done")
     p.add_argument("--event", type=int, required=True, help="application_events id")

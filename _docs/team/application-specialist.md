@@ -226,9 +226,20 @@ mismatch, stale listing, etc.) **before or during fill**:
 
 ## After submit (human confirms)
 
-Flip the application row to `applied` (+ `applied_at`, `applied` event) and
-distill: the general learning goes to `MEMORY.md`, the ATS- or
-tooling-specific correction to `_docs/<ats>.md` or `_docs/tooling.md`.
+Flip the application row with one command, which records the submission and
+starts the chase clock:
+
+```bash
+python3 -m db.tools.review submitted --app 6 --method online_form \
+    --confirmation "https://.../confirmation?...&token=..." \
+    --note "the one line the digest shows" --details "the longer version"
+```
+
+It refuses to record the same application twice, so a re-run cannot restart the
+clock, and it prints the `questions record --answer-given` line for anything
+that went out differently from the bank. Then distill: the general learning goes
+to `MEMORY.md`, the ATS- or tooling-specific correction to `_docs/<ats>.md` or
+`_docs/tooling.md`.
 
 Facts and phrasings part company here. A **fact** about the user goes to
 `artifacts/profile.jsonc`, never into committed files, and it goes in atomic:

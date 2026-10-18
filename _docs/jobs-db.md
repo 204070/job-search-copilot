@@ -169,6 +169,7 @@ section instead of six, and the marker needs no table of its own.
 | `python3 -m db.tools.review` | Rewrite `artifacts/review.md` and print what needs action |
 | `digest --out PATH \| --stdout` | Write somewhere else, or print instead |
 | `follow-up --app 3 --in-days 7 [--note "..."]` | Schedule a chase: an `application_events` row with `scheduled_for` |
+| `submitted --app 6 [--method ...] [--confirmation URL] [--note "..."] [--date ISO]` | Record that the user sent it: the row goes to `applied` with `applied_at`, an `applied` event is appended, and the chase clock starts. Refuses a second recording |
 | `reply --app 6 --summary "..." [--details "..."] [--date ISO]` | Record contact FROM the employer that moves no status; this is what stops the chase clock |
 | `resolve --event 4 [--note "..."]` | Mark a scheduled follow-up done (`metadata.done`, `done_at`) |
 | `dismiss --job 616 --reason "posting closed"` | Archive a lead, recording `metadata.reason_for_archive` |
