@@ -26,11 +26,12 @@
 - **Identity facts:** `artifacts/profile.jsonc` — read before drafting/filling.
 - **Question bank:** `db/jobs.db` (`questions` + `question_instances`) behind
   `python3 -m db.tools.questions` — `lookup` before filling, `record` at
-  handover; `artifacts/faqs/*.md` are generated from it (`digest`).
-- **Review digest:** `python3 -m db.tools.review` writes
-  `logs/reviews/<date>.md` (private, gitignored): follow-ups due, applications,
-  next roles, pipeline health, question-bank drafts. Detail:
-  `_docs/jobs-db.md`.
+  handover, `approve --from-app N` after submitting; `artifacts/faqs/*.md` are
+  generated from it (`digest`).
+- **Review digest:** `python3 -m db.tools.review` rewrites the one living file
+  `artifacts/review.md` (private, gitignored): what changed since last time,
+  follow-ups due, applications, next roles, pipeline health, question-bank
+  drafts. Detail: `_docs/jobs-db.md`.
 - **Current phase:** semi-automatic applications — agent drafts/fills, human
   reviews & submits. Runbook: `_docs/team/application-specialist.md`.
 - **Tool:** OpenCLI Browser Bridge drives my real Chrome (always

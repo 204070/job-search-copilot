@@ -163,13 +163,21 @@ python3 -m db.tools.questions record --key <slug> \
     --application-id <id>                                 # after you fill
 python3 -m db.tools.questions frequency                   # what recurs
 python3 -m db.tools.questions promotions                  # facts -> profile.jsonc
-python3 -m db.tools.questions digest --kind application   # regenerate the FAQ
+python3 -m db.tools.questions approve --from-app 4        # after you submit
+python3 -m db.tools.questions digest --kind application \
+    --out artifacts/faqs/application-faq.md               # regenerate the FAQ
 ```
 
 A `lookup` that returns nothing is the signal that a question is new; a
 question asked twice has earned a stable key. `artifacts/faqs/*.md` are
 generated from the bank (private — `artifacts/` is gitignored), so record
 answers here and regenerate, never hand-edit both.
+
+`status` is a review state, not a record of events: `record` writes `draft`
+and nothing flips it on its own. `approve` is the only thing that marks a row
+`approved`, and the honest trigger is a submission — the text an employer
+received is the text that was accepted. Run it after filing, and read back
+anything it reports as revised since it was sent.
 
 ## Cron
 

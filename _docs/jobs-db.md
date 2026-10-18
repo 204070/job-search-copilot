@@ -101,6 +101,7 @@ The CLI is `python3 -m db.tools.questions`:
 |---|---|
 | `lookup "<label>"` | Best canonical matches for a form's wording, with answer + reasoning + frequency. `--kind technical`, `--evidence`. Exit 1 on a miss |
 | `record` | Upsert the canonical question and append one instance (`--key`, `--label`, `--option`, `--field-type`, `--required`, `--answer-given`, `--job-id`, `--application-id`, `--source`, `--promotes-to`, `--clear-promotes-to`, `--alias`) |
+| `approve` | Mark answers read back and safe to reuse (`--from-app N`, `--key KEY`, `--all-draft`) |
 | `frequency` | Every question by times asked (`--kind`, `--min-count`) |
 | `promotions` | Facts with a `promotes_to` path not yet in `profile.jsonc` |
 | `digest --kind application\|technical` | Regenerate a FAQ doc (`--out PATH`, else stdout) |
@@ -111,6 +112,20 @@ The CLI is `python3 -m db.tools.questions`:
 awkward case worth naming: a question a form phrases with no words in common
 with the canonical text misses until you add that phrasing as an `--alias`.
 
+`status` is a *review* state, not a record of what happened. `record` writes
+`draft`, and nothing flips it automatically: not filling a form, not submitting
+one. `approve` is the only thing that moves a row to `approved`, and the honest
+trigger is a submission, because the text that reached an employer is the text
+that was accepted:
+
+    python3 -m db.tools.questions approve --from-app 4
+
+`approve` reports how the bank's text compares with what the form actually
+carried. A row marked `REVISED after it was sent` was edited after the
+application went out, so it has not been read in its current form and is worth
+a minute. Nothing in the pipeline approves on its own, so after filing an
+application, run this.
+
 `promotes_to` marks a question whose answer looks like it belongs in
 `profile.jsonc`. When that turns out to be wrong — compensation expectations,
 say, which are answered case by case rather than as one fixed fact — drop the
@@ -120,28 +135,42 @@ next reader learns from it.
 
 ## Review digest (`db/tools/review.py`)
 
-The decision queue, for reading every few days: follow-ups due, applications
-with their age and next action, the next roles worth a look, pipeline health,
-and the question bank's outstanding drafts.
+The decision queue: what changed since you last looked, follow-ups due,
+applications with their age and next action, the next roles worth a look,
+pipeline health, and the question bank's outstanding drafts.
+
+It is **one living file**, `artifacts/review.md`, rewritten in place. There are
+no dated copies, because there is nothing to accumulate: the digest holds no
+state. A stale line leaves because the row behind it was resolved in the
+database, never because it was edited out of the text, and hand edits are lost
+on the next rewrite. Every actionable line therefore carries the command that
+closes it. The file is private (gitignored), because it names employers and
+this repo is public.
+
+Section 1 is the point of the format: it is computed against the `Refreshed:`
+line the file carried last time, so reading it "from time to time" costs one
+section instead of six, and the marker needs no table of its own.
 
 | Command | What it does |
 |---|---|
-| `python3 -m db.tools.review` | Write `logs/reviews/<date>.md` and print what needs action |
+| `python3 -m db.tools.review` | Rewrite `artifacts/review.md` and print what needs action |
+| `digest --out PATH \| --stdout` | Write somewhere else, or print instead |
 | `follow-up --app 3 --in-days 7 [--note "..."]` | Schedule a chase: an `application_events` row with `scheduled_for` |
 | `resolve --event 4 [--note "..."]` | Mark a scheduled follow-up done (`metadata.done`, `done_at`) |
+| `dismiss --job 616 --reason "posting closed"` | Archive a lead, recording `metadata.reason_for_archive` |
 | `selftest` | Check the follow-up decision logic on fixed cases |
 
-It is derived entirely from the DB, so it is regenerated, never maintained. It
-writes under `logs/`, which is gitignored: a digest names employers and this
-repo is public. The follow-up clock is 7 days after submission with no reply on
-record; only the suggestion is automatic, scheduling stays an explicit command.
+The follow-up clock is 7 days after submission with no reply on record; only
+the suggestion is automatic, scheduling stays an explicit command.
 
 "Next roles" uses the same precedence as the scanner report (worldwide, unknown,
 region-gated, US-only), then score, and caps each employer at two rows so one
 company cannot fill the page. It applies the scanner's `MATCH_MIN_SCORE` default
-(15) as a floor and lets score-0 rows through only when the title plainly names
-one of our roles, which is where the scorer's blind spot is: the table below
-that shortlist reports how many postings read like a target role yet score 0.
+(15) as a floor, and uses `Matcher.admits()` rather than a private regex to
+decide whether a score-0 row is still a role worth reading: the two must not
+disagree about what a target role is. `region_gated` means the posting names
+countries, and is a prompt to read that list, not a verdict: EMEA includes
+Africa, so it is not a bar.
 
 ## Conventions
 

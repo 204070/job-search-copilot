@@ -18,6 +18,7 @@ Scripts and workflows expect these filenames:
 | `scripts/` | Helper scripts for the semi-auto workflow (e.g. `embed_resume.sh` — chunked base64 resume upload into Greenhouse pages) |
 | `generated/` | Machine-built files (e.g. generated resume PDFs) — superseded by hand-tuned originals unless noted |
 | `faqs/` | **Generated** interview/application Q&A (`application-faq.md`, `technical-faq.md`) — rendered from the question bank by `python3 -m db.tools.questions digest`; edit the bank with `record`, not these files |
+| `review.md` | **Generated** decision queue — one living file, rewritten in place by `python3 -m db.tools.review`. Read section 1 for what changed since last time; close items with the commands it prints rather than editing the text |
 
 Get started by copying the placeholders:
 

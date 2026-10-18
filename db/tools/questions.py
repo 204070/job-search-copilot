@@ -426,6 +426,96 @@ def cmd_lookup(conn: sqlite3.Connection, args: argparse.Namespace) -> int:
 # --- frequency / promotions ------------------------------------------------
 
 
+def _approval_note(conn: sqlite3.Connection, row) -> str:
+    """How the bank's current text compares with what the last form received.
+
+    Approval means a human has read this text. Submitting a form is the
+    strongest evidence of that, but only for the text the form actually
+    carried: an answer edited after the application went out has not been read
+    back, so it is worth naming even while it is approved.
+    """
+    if row["status"] == "retired":
+        return "retired, left alone"
+    if not row["answer"]:
+        if (row["answer_source"] or "").startswith("profile:"):
+            return "read from the profile, no literal text"
+        return "no answer text yet"
+    sent = conn.execute(
+        "SELECT answer_given FROM question_instances WHERE question_id = ?"
+        " ORDER BY asked_at DESC LIMIT 1",
+        (row["id"],),
+    ).fetchone()
+    if sent is None or not sent["answer_given"]:
+        return "never put on a form"
+    if sent["answer_given"].strip() == row["answer"].strip():
+        return "verbatim as sent"
+    return "REVISED after it was sent"
+
+
+def cmd_approve(conn: sqlite3.Connection, args: argparse.Namespace) -> int:
+    """Mark answers approved: read back, and safe to reuse without re-reading.
+
+    Three ways to select what to approve, because the honest trigger differs.
+    `--from-app N` is the usual one and the one to reach for after submitting:
+    it takes exactly the questions that application put on a form, so the
+    approval follows the submission instead of depending on remembering.
+    """
+    sql = ("SELECT DISTINCT q.* FROM questions q"
+           " JOIN question_instances i ON i.question_id = q.id")
+    rows: list = []
+    if args.from_app is not None:
+        rows = conn.execute(
+            sql + " WHERE i.application_id = ?", (args.from_app,)).fetchall()
+
+    if args.key:
+        for key in args.key:
+            row = conn.execute(
+                "SELECT * FROM questions WHERE question_key = ?", (key,)).fetchone()
+            if row is None:
+                print(f"no question with key {key!r}")
+            else:
+                rows.append(row)
+    if args.all_draft:
+        rows += conn.execute(
+            "SELECT * FROM questions WHERE status = 'draft'").fetchall()
+
+    if not rows:
+        print("nothing selected. Use --from-app N, --key KEY, or --all-draft.")
+        return 1
+
+    approved, left = [], []
+    seen: set[int] = set()
+    for row in sorted(rows, key=lambda r: r["question_key"]):
+        if row["id"] in seen:
+            continue
+        seen.add(row["id"])
+        note = _approval_note(conn, row)
+        if row["status"] == "retired":
+            left.append((row["question_key"], note))
+            continue
+        conn.execute(
+            "UPDATE questions SET status = 'approved', updated_at = ? WHERE id = ?",
+            (now_iso(), row["id"]),
+        )
+        approved.append((row["question_key"], note))
+    conn.commit()
+
+    if approved:
+        print(f"approved {len(approved)} question(s):")
+        width = max(len(key) for key, _ in approved)
+        for key, note in approved:
+            print(f"  {key:<{width}}  {note}")
+    if left:
+        print("left as they were:")
+        for key, note in left:
+            print(f"  {key}  {note}")
+    revised = [key for key, note in approved if note.startswith("REVISED")]
+    if revised:
+        print(f"\nread back when convenient: {', '.join(revised)}")
+        print("the form went out with older text than the bank now holds.")
+    return 0
+
+
 def cmd_frequency(conn: sqlite3.Connection, args: argparse.Namespace) -> int:
     sql = "SELECT * FROM questions_with_frequency WHERE status <> 'retired'"
     params: list[object] = []
@@ -863,6 +953,14 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--limit", type=int, default=5)
     p.add_argument("--evidence", action="store_true", help="include every instance seen")
     p.set_defaults(func=cmd_lookup)
+
+    p = sub.add_parser("approve", help="mark answers as read back and safe to reuse")
+    p.add_argument("--key", action="append", help="question_key (repeatable)")
+    p.add_argument("--from-app", dest="from_app", type=int,
+                   help="approve exactly what this application put on a form")
+    p.add_argument("--all-draft", dest="all_draft", action="store_true",
+                   help="approve everything still in draft")
+    p.set_defaults(func=cmd_approve)
 
     p = sub.add_parser("frequency", help="every canonical question by times asked")
     p.add_argument("--kind", choices=KINDS)

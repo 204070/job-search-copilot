@@ -4,21 +4,33 @@ The scanner writes leads, the application runbook files applications, and the
 question bank accumulates answers. None of that tells you what needs a decision
 this week. This tool reads the database and produces that page:
 
-    python3 -m db.tools.review                 # write logs/reviews/<date>.md
+    python3 -m db.tools.review                    # rewrite artifacts/review.md
     python3 -m db.tools.review follow-up --app 3 --in-days 7
     python3 -m db.tools.review resolve --event 4
+    python3 -m db.tools.review dismiss --job 616 --reason "posting closed"
 
-`logs/` is gitignored, deliberately: the digest names employers, and this repo
-is public. The digest is a private working document, regenerated whenever it is
-wanted, never a source of truth. Everything in it is derived from `db/jobs.db`.
+One living file, rewritten in place, not a dated log. There is nothing to
+accumulate: the digest holds no state, and a stale item leaves the page by
+being resolved in the database (a chase closed, a lead archived, an answer
+approved), not by being edited out of the text. Hand edits would be lost on
+the next rewrite, which is why every actionable line carries the command that
+closes it. The database is the memory; this page is a view.
+
+The file is private (gitignored, via `artifacts/`): it names employers, and
+this repo is public.
 
 Sections are ordered by what is most likely to be expensive to miss:
 
-1. Needs you now      follow-ups due, applications filled but not sent
-2. Applications       every application with its age and next action
-3. Next roles         bookmarked postings, best-ranked first
-4. Pipeline health    counts that say whether the ranking can be trusted
-5. Question bank      answers still awaiting a human read
+1. Since you last looked   what changed since the previous rewrite
+2. Needs you now           follow-ups due, applications filled but not sent
+3. Applications            every application with its age and next action
+4. Next roles              bookmarked postings, best-ranked first
+5. Pipeline health         counts that say whether the ranking can be trusted
+6. Question bank           answers still awaiting a human read
+
+Section 1 is the one that makes reading this "from time to time" cheap: it is
+computed against the `Refreshed:` line this file carried last time, so it needs
+no extra bookkeeping and cannot drift.
 
 The follow-up clock is `FOLLOW_UP_AFTER_DAYS`: an application that has been out
 that long with no reply on record is worth chasing. The digest only suggests
@@ -28,6 +40,7 @@ that; scheduling is an explicit command so the signal stays yours.
 from __future__ import annotations
 
 import argparse
+import json
 import re
 import sqlite3
 import subprocess
@@ -40,8 +53,11 @@ from db.connection import connect
 #: Days after submission with no reply on record before a chase is suggested.
 FOLLOW_UP_AFTER_DAYS = 7
 
-#: Where digests are written (gitignored via the `logs/` rule).
-DEFAULT_OUT_DIR = Path("logs/reviews")
+#: The one living digest file (gitignored, via the `artifacts/` rule).
+DEFAULT_OUT = Path("artifacts/review.md")
+
+#: The line the next run reads to know when this file was last refreshed.
+REFRESHED_RE = re.compile(r"^Refreshed: (?P<stamp>\S+)", re.M)
 
 #: Sort key for where a posting hires. `unknown` stays visible on purpose.
 SCOPE_RANK = {"worldwide": 0, "unknown": 1, "region_gated": 2, "us_only": 3}
@@ -66,8 +82,6 @@ MAX_PER_EMPLOYER = 2
 
 #: How many postings the shortlist shows.
 NEXT_ROLE_LIMIT = 12
-
-HISTORY_LIMIT = 3
 
 
 # --- pure helpers (self-tested) --------------------------------------------
@@ -227,9 +241,73 @@ def _table(header: list[str], rows: list[list[str]]) -> list[str]:
     return out
 
 
+def section_since(conn: sqlite3.Connection, since: str | None,
+                  limit: int = 8) -> list[str]:
+    """Section 1: what changed since the previous rewrite.
+
+    Everything here comes from timestamps the database already keeps (row
+    creation and update times, the application event ledger), so this section
+    needs no bookkeeping of its own and cannot drift from the sections below.
+    It is what makes reading the page "from time to time" cheap: the standing
+    picture barely moves, the delta is where the decisions are.
+    """
+    out = ["## 1. Since you last looked", ""]
+    if not since:
+        out += ["(first rewrite in this format, so there is nothing earlier to "
+                "compare against)", ""]
+        return out
+    stamp = since.replace("T", " ").replace("Z", " UTC")
+
+    new_leads = conn.execute(
+        "SELECT id, title, company, region_scope, match_score FROM jobs"
+        " WHERE status = 'bookmarked' AND coalesce(match_score, 0) >= ?"
+        "   AND coalesce(bookmarked_at, created_at) > ?"
+        "   AND id NOT IN (SELECT job_id FROM applications)"
+        " ORDER BY match_score DESC, id LIMIT ?",
+        (RELEVANT_FLOOR, since, limit),
+    ).fetchall()
+    events = conn.execute(
+        "SELECT e.application_id, e.event_type, e.to_status, e.summary,"
+        "       e.occurred_at, j.company, j.title"
+        "  FROM application_events e"
+        "  JOIN applications a ON a.id = e.application_id"
+        "  JOIN jobs j ON j.id = a.job_id"
+        " WHERE e.occurred_at > ? ORDER BY e.occurred_at",
+        (since,),
+    ).fetchall()
+    left_pool = conn.execute(
+        "SELECT id, title, company, status FROM jobs"
+        " WHERE status <> 'bookmarked' AND updated_at > ?"
+        "   AND id NOT IN (SELECT job_id FROM applications)"
+        " ORDER BY updated_at LIMIT ?",
+        (since, limit),
+    ).fetchall()
+
+    if not (new_leads or events or left_pool):
+        out += [f"(nothing changed since {stamp})", ""]
+        return out
+
+    out += [f"Compared against {stamp}. The sections below are the standing "
+            "picture, not the change.", ""]
+    if new_leads:
+        out += _table(["job", "role", "employer", "scope", "score"],
+                      [[f"#{r['id']}", (r['title'] or '')[:42], r['company'],
+                        r['region_scope'], r['match_score']] for r in new_leads])
+        out.append("")
+    for e in events:
+        note = f": {e['summary']}" if e["summary"] else ""
+        out.append(f"- **Application #{e['application_id']}** ({e['company']}): "
+                   f"{e['event_type']} -> {e['to_status'] or '-'}{note}")
+    for r in left_pool:
+        out.append(f"- **Left the pool**: {r['company']} - {r['title']} "
+                   f"(`{r['status']}`)")
+    out.append("")
+    return out
+
+
 def section_needs_you(conn, apps, today: date) -> list[str]:
-    """Section 1: anything with a date attached or a decision outstanding."""
-    out = ["## 1. Needs you now", ""]
+    """Section 2: anything with a date attached or a decision outstanding."""
+    out = ["## 2. Needs you now", ""]
     items: list[str] = []
 
     for row in apps:
@@ -265,8 +343,8 @@ def section_needs_you(conn, apps, today: date) -> list[str]:
 
 
 def section_applications(apps, today: date) -> list[str]:
-    """Section 2: every application, oldest decision first."""
-    out = ["## 2. Applications", "",
+    """Section 3: every application, oldest decision first."""
+    out = ["## 3. Applications", "",
            "`age` is days since submission; `last signal` is the most recent "
            "reply, interview or note on record (not the submission itself).", ""]
     rows = []
@@ -289,8 +367,8 @@ def section_applications(apps, today: date) -> list[str]:
 
 
 def section_next_roles(conn) -> list[str]:
-    """Section 3: bookmarked postings worth a look, and what the gate leaves out."""
-    out = ["## 3. Next roles", ""]
+    """Section 4: bookmarked postings worth a look, and what the gate leaves out."""
+    out = ["## 4. Next roles", ""]
     ranked = conn.execute(
         "SELECT id, title, company, region_scope, region_evidence, match_score"
         " FROM jobs WHERE status = 'bookmarked'"
@@ -340,8 +418,8 @@ def section_next_roles(conn) -> list[str]:
 
 
 def section_health(conn) -> list[str]:
-    """Section 4: counts that decide whether section 3 can be trusted."""
-    out = ["## 4. Pipeline health", ""]
+    """Section 5: counts that decide whether section 3 can be trusted."""
+    out = ["## 5. Pipeline health", ""]
     by_status = conn.execute(
         "SELECT status, COUNT(*) n FROM jobs GROUP BY status ORDER BY n DESC").fetchall()
     by_scope = conn.execute(
@@ -383,8 +461,8 @@ def section_health(conn) -> list[str]:
 
 
 def section_questions(conn) -> list[str]:
-    """Section 5: what the bank knows, and what it still needs from you."""
-    out = ["## 5. Question bank", ""]
+    """Section 6: what the bank knows, and what it still needs from you."""
+    out = ["## 6. Question bank", ""]
     total = _count(conn, "SELECT COUNT(*) FROM questions")
     asked_twice = _count(
         conn, "SELECT COUNT(*) FROM questions_with_frequency WHERE times_asked >= 2")
@@ -403,28 +481,49 @@ def section_questions(conn) -> list[str]:
     return out
 
 
-def build_digest(conn: sqlite3.Connection, today: date | None = None) -> str:
+def last_refreshed(path: Path | str = DEFAULT_OUT) -> str | None:
+    """The `Refreshed:` stamp this file carried last time, or None.
+
+    The marker lives in the file rather than in a table: one file, one line,
+    and no schema to keep in step with something that is only a reading aid.
+    """
+    try:
+        text = Path(path).read_text(encoding="utf-8")
+    except OSError:
+        return None
+    match = REFRESHED_RE.search(text)
+    return match.group("stamp") if match else None
+
+
+def build_digest(conn: sqlite3.Connection, today: date | None = None,
+                 since: str | None = None, now: datetime | None = None) -> str:
     """The whole digest as markdown."""
     today = today or datetime.now(timezone.utc).date()
+    now = now or datetime.now(timezone.utc)
     apps = _applications(conn)
-    today_name = f"{today.isoformat()}.md"
-    previous = sorted(p for p in DEFAULT_OUT_DIR.glob("*.md")
-                      if p.name != today_name) if DEFAULT_OUT_DIR.exists() else []
 
     lines = [
-        f"# Review digest, {today.isoformat()}",
+        "# Review digest",
         "",
-        "Private working document (generated into gitignored `logs/`). Employer",
-        "names belong here and never in a committed file.",
+        f"Refreshed: {now.strftime('%Y-%m-%dT%H:%M:%SZ')}",
         "",
-        f"Regenerate: `python3 -m db.tools.review`  |  "
-        f"Schedule a chase: `python3 -m db.tools.review follow-up --app <id> --in-days <n>`",
+        "One living file, rewritten in place. It holds no state of its own: a "
+        "stale line leaves because the row behind it was resolved in "
+        "`db/jobs.db`, never because it was edited out here. Closing commands:",
+        "",
+        "```bash",
+        "python3 -m db.tools.review                                # rewrite this file",
+        "python3 -m db.tools.review follow-up --app 4 --in-days 7  # schedule a chase",
+        "python3 -m db.tools.review resolve --event 12             # close a chase",
+        "python3 -m db.tools.review dismiss --job 616 --reason \"...\"   # drop a lead",
+        "python3 -m db.tools.questions approve --from-app 4        # approve what it sent",
+        "```",
+        "",
     ]
-    if previous:
-        lines.append(f"Earlier digests: {', '.join(p.name for p in previous[-HISTORY_LIMIT:])}")
-    lines += ["", f"{len(apps)} application(s) on file." if apps
-              else "No applications on file yet.", ""]
+    lines += ([f"{len(apps)} application(s) on file.", ""] if apps
+              else ["No applications on file yet.", ""])
 
+    lines += section_since(conn, since)
     lines += section_needs_you(conn, apps, today)
     lines += section_applications(apps, today)
     lines += section_next_roles(conn)
@@ -438,14 +537,14 @@ def build_digest(conn: sqlite3.Connection, today: date | None = None) -> str:
 
 def cmd_digest(conn: sqlite3.Connection, args: argparse.Namespace) -> int:
     today = datetime.now(timezone.utc).date()
-    text = build_digest(conn, today)
+    path = Path(args.out)
+    since = last_refreshed(path)
+    text = build_digest(conn, today, since=since)
     if args.stdout:
         print(text)
         return 0
 
-    out_dir = Path(args.out_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
-    path = out_dir / f"{today.isoformat()}.md"
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8")
 
     apps = _applications(conn)
@@ -455,9 +554,38 @@ def cmd_digest(conn: sqlite3.Connection, args: argparse.Namespace) -> int:
                                 bool(r["last_signal"]), r["due_follow_up"],
                                 today.isoformat()).startswith(("submit", "consider",
                                                                 "follow up"))]
-    print(f"wrote {path}  ({len(apps)} application(s), {len(wait)} needing action)")
+    moved = "since " + since.replace("T", " ").replace("Z", " UTC") if since else "first run"
+    print(f"rewrote {path}  ({len(apps)} application(s), {len(wait)} needing action, {moved})")
     for row in wait:
         print(f"  #{row['app_id']} {row['company']}: {row['title']}")
+    return 0
+
+
+def cmd_dismiss(conn: sqlite3.Connection, args: argparse.Namespace) -> int:
+    """Take a lead out of the pool, with the reason recorded on the row.
+
+    The counterpart to applying: a posting you have read and decided against
+    should leave the shopping list, and the reason should outlive the decision
+    so the same posting is not re-argued in a month.
+    """
+    row = conn.execute(
+        "SELECT id, title, company, status FROM jobs WHERE id = ?",
+        (args.job,)).fetchone()
+    if row is None:
+        print(f"no job #{args.job}")
+        return 1
+    if row["status"] == "applied":
+        print(f"#{args.job} already has an application. Withdraw that instead: "
+              "it is a pipeline decision, not a lead decision.")
+        return 1
+    conn.execute(
+        "UPDATE jobs SET status = 'archived',"
+        " metadata = json_set(coalesce(metadata, '{}'), '$.reason_for_archive', ?),"
+        " updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')"
+        " WHERE id = ?", (args.reason, args.job))
+    conn.commit()
+    print(f"archived #{args.job}  {row['company']} - {row['title']}")
+    print(f"  reason: {args.reason}")
     return 0
 
 
@@ -540,8 +668,9 @@ def build_parser() -> argparse.ArgumentParser:
         description="The decision queue: follow-ups, applications, next roles.")
     sub = parser.add_subparsers(dest="command")
 
-    p = sub.add_parser("digest", help="write the digest (the default)")
-    p.add_argument("--out-dir", dest="out_dir", default=str(DEFAULT_OUT_DIR))
+    p = sub.add_parser("digest", help="rewrite the digest (the default)")
+    p.add_argument("--out", default=str(DEFAULT_OUT),
+                   help=f"the living file (default: {DEFAULT_OUT})")
     p.add_argument("--stdout", action="store_true", help="print instead of writing")
     p.set_defaults(func=cmd_digest)
 
@@ -555,6 +684,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--event", type=int, required=True, help="application_events id")
     p.add_argument("--note", help="how it went")
     p.set_defaults(func=cmd_resolve)
+
+    p = sub.add_parser("dismiss", help="archive a lead with a reason")
+    p.add_argument("--job", type=int, required=True, help="jobs id")
+    p.add_argument("--reason", required=True, help="why it is out of the pool")
+    p.set_defaults(func=cmd_dismiss)
 
     p = sub.add_parser("selftest", help="check the decision logic on fixed cases")
     p.set_defaults(func=lambda conn, args: cmd_selftest())
