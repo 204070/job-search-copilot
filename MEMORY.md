@@ -15,6 +15,9 @@
 - **Target:** senior remote full-stack (React/TS, Node, Python); scored via
   `scanner/keywords.jsonc`.
 - **Identity facts:** `artifacts/profile.jsonc` — read before drafting/filling.
+- **Question bank:** `db/jobs.db` (`questions` + `question_instances`) behind
+  `python3 -m db.tools.questions` — `lookup` before filling, `record` at
+  handover; `artifacts/faqs/*.md` are generated from it (`digest`).
 - **Current phase:** semi-automatic applications — agent drafts/fills, human
   reviews & submits. Runbook: `_docs/team/application-specialist.md`.
 - **Tool:** OpenCLI Browser Bridge drives my real Chrome (always
@@ -26,6 +29,10 @@
 - Per-application records (job row, application row, events) live in
   `db/jobs.db` (`jobs` → `applications` → `application_events`; rows are
   gitignored). This file keeps only distilled learnings, never the log itself.
+- Question bank: `questions` + `question_instances` in the same DB, behind
+  `python3 -m db.tools.questions`. `lookup` before filling a form, `record` at
+  handover, `frequency` to see what recurs; `digest` regenerates
+  `artifacts/faqs/*.md`. Schema and commands: `_docs/jobs-db.md`.
 
 ## Reference docs
 
@@ -47,3 +54,9 @@
   application_events.
 - Dedupe gap: same job from multiple boards lands as separate rows (Lemon.io #31/#32/#48) — dedupe by company+title when applying.
 - X-bookmark jobs (50) are mostly un-enriched tweets: company/title often "Unknown", score low — enrich before considering.
+- Question bank added 18/10 (`0002_question_bank.sql`): 8 prior FAQ entries
+  imported via `import-faq`. Lesson that motivated it: the FAQ's
+  `Action: Add to profile as compensation_expectation` never landed in
+  `profile.jsonc`, so the promotion loop was lossy — `questions promotions`
+  now lists those. Known limit: `lookup` matches on shared words, so a form
+  wording with no word in common misses until the phrasing is added as an alias.

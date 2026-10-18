@@ -11,6 +11,10 @@ Optimize for quality of opportunities, interview conversion, offer quality, and 
   rejection, tooling discovery). No secrets or private contacts in it.
   MEMORY.md is an index — follow its pointers (`_docs/<ats>.md` per posting
   type, `_docs/tooling.md` for browser work) instead of bloating it.
+- Application answers are not re-derived each time: query the question bank
+  (`python3 -m db.tools.questions lookup "<field label>"`) before filling, and
+  record what the form asked at handover. `artifacts/faqs/*.md` are generated
+  from that bank, not hand-written. Detail: `_docs/jobs-db.md`.
 - Private documents live in `artifacts/` (see `artifacts/README.md`); daily
   lead reports in `logs/leads/`.
 

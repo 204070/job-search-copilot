@@ -33,6 +33,9 @@ All future schema changes go in new numbered files on top of the baseline
 | `jobs` | Postings: `status` ∈ bookmarked → ready_to_apply → applied → archived; `workplace_type` ∈ remote, hybrid, onsite, unknown (default unknown); nullable `match_score` 0–100; salary range pair; `metadata` JSON (include `reason_for_archive` when archived) |
 | `applications` | One per submission: `status` ∈ ready_to_apply → applied → screening → interviewing → offer → rejected/withdrawn → archived; `applied_at` set on `applied` transition; method, resume/cover-letter variants, referrer, notes; `metadata` JSON |
 | `application_events` | Append-only timeline: status_change, applied, follow_up, interview, offer, rejection, withdrawal, note; `occurred_at` + optional `scheduled_for`; `metadata` JSON |
+| `questions` | Canonical, deduped application/interview questions: `question_key` (stable slug), `kind` (application/technical), `canonical_text`, `answer`, `reasoning`, `answer_source` (`profile:<path>` / `answer_bank`), `aliases` JSON, `promotes_to` (profile path awaiting promotion), `status` (draft/approved/retired) |
+| `question_instances` | Append-only ledger: one row per time a form asked a question — `field_label`, `field_type`, `required`, `options_seen` JSON, `answer_given`, `asked_at`, optional `application_id`/`job_id` |
+| `questions_fts` | FTS5 external-content index over canonical text, answer and aliases (kept in sync by triggers) — powers `lookup` |
 | `schema_migrations` | Applied filenames, owned by the runner |
 
 Deleting a job cascades to its applications and events. Statuses are separate
@@ -73,6 +76,41 @@ for terminal outcomes (rejected, withdrawn, or deliberately closed).
 
 Scanner, scoring and cron details: see `_docs/scanning.md`.
 
+## Question bank (`0002_question_bank.sql`)
+
+Two layers, so "is this frequently asked?" is a `COUNT`, not a judgement call:
+
+- `questions` — the canonical, deduped row: one per distinct question, with the
+  reusable answer, the reasoning behind it, and the aliases a form might use.
+  No date, no company. When the answer is really a fact, `answer_source` points
+  into `artifacts/profile.jsonc` (`profile:$.location.city`) instead of holding
+  a second copy.
+- `question_instances` — the append-only ledger of every time a form actually
+  asked it, carrying the date, the job/application, and the options that form
+  showed. Frequency and provenance live here, not in the canonical row.
+
+`questions_with_frequency` reads a question with its `times_asked` and
+`last_asked_at`. `questions_fts` is a stdlib FTS5 index kept in sync by
+triggers; the CLI treats it as an accelerator and falls back to a LIKE scan if
+it is ever absent (a SQLite build without FTS5 makes migration `0002` fail, so
+keep FTS5 binaries).
+
+The CLI is `python3 -m db.tools.questions`:
+
+| Command | What it does |
+|---|---|
+| `lookup "<label>"` | Best canonical matches for a form's wording, with answer + reasoning + frequency. `--kind technical`, `--evidence`. Exit 1 on a miss |
+| `record` | Upsert the canonical question and append one instance (`--key`, `--label`, `--option`, `--field-type`, `--required`, `--answer-given`, `--job-id`, `--application-id`, `--source`, `--promotes-to`, `--alias`) |
+| `frequency` | Every question by times asked (`--kind`, `--min-count`) |
+| `promotions` | Facts with a `promotes_to` path not yet in `profile.jsonc` |
+| `digest --kind application\|technical` | Regenerate a FAQ doc (`--out PATH`, else stdout) |
+| `import-faq` | One-off: load the pre-bank `artifacts/faqs/*.md` format |
+
+`artifacts/faqs/application-faq.md` and `technical-faq.md` are **generated** by
+`digest`, not hand-written. Record answers with `record`, then regenerate. The
+awkward case worth naming: a question a form phrases with no words in common
+with the canonical text misses until you add that phrasing as an `--alias`.
+
 ## Conventions
 
 - Timestamps: ISO-8601 UTC text `2026-10-17T09:00:00Z` (`strftime('%Y-%m-%dT%H:%M:%SZ','now')` defaults).
@@ -101,4 +139,18 @@ SELECT status, COUNT(*) FROM jobs GROUP BY status;
 -- Source of every job (board name it came from)
 SELECT id, title, source, source_kind, status
 FROM jobs_with_source ORDER BY id DESC LIMIT 20;
+
+-- What a form is most likely to ask, and how often it has come up
+SELECT question_key, kind, times_asked, last_asked_at, canonical_text
+FROM questions_with_frequency
+WHERE status <> 'retired' ORDER BY times_asked DESC, last_asked_at DESC;
+
+-- The exact wording and options a given form showed, most recent first
+SELECT i.asked_at, i.field_label, i.field_type, i.options_seen, i.answer_given,
+       j.company, j.title
+FROM question_instances i
+JOIN questions q ON q.id = i.question_id
+LEFT JOIN jobs j ON j.id = i.job_id
+WHERE q.question_key = 'us_sponsorship_required'
+ORDER BY i.asked_at DESC;
 ```

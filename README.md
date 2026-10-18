@@ -17,6 +17,18 @@ Reports print to stdout and append to `logs/leads/YYYY-MM-DD.md`
 (accumulating across the day's runs). New matches = score ≥ threshold;
 X-bookmarked leads are listed **regardless** of score ("Bookmarked on X").
 
+> **Requires SQLite with FTS5.** `python3 -m db.migrate` creates the question
+> bank's full-text index, and a Python whose SQLite was built without FTS5 will
+> fail on migration `0002`. Check first:
+>
+> ```bash
+> python3 -c "import sqlite3; sqlite3.connect(':memory:').execute('CREATE VIRTUAL TABLE t USING fts5(x)')"
+> ```
+>
+> No error means you're set. If it fails, use a Python built with FTS5
+> (the common case: python.org and most distro builds have it). Everything
+> else in the repo needs only stock `sqlite3`.
+
 ### First run: make it yours
 
 The repo ships working EXAMPLE config — three files to review before your
@@ -44,8 +56,9 @@ Nothing here phones home: all state is the local SQLite file + your files.
 
 | Path | What |
 |---|---|
-| `db/jobs.db` | SQLite: `boards` → `jobs` → `applications` → `application_events` |
+| `db/jobs.db` | SQLite: `boards` → `jobs` → `applications` → `application_events`, plus the question bank (`questions`, `question_instances`) |
 | `scanner/` | fetchers (rss / api / jobspy / html modes) + store + matcher + CLI |
+| `db/tools/questions.py` | the question bank CLI: `lookup` / `record` / `frequency` / `promotions` / `digest` |
 | `db/migrations/` | numbered schema files; `python3 -m db.migrate` applies new ones |
 | `db/seeds/` | curated boards (`boards.jsonc`); `python3 -m db.seed` syncs them |
 | `scanner/keywords.jsonc` | scoring terms (plain or regex `pattern`); edits apply on next scan |
@@ -93,6 +106,35 @@ python3 -m scanner.tools.add_job --title "Senior Backend Eng" \
 Hand-added jobs land on the `Manual` board (never scanned) and are scored
 like scanned jobs. Any unknown `--board NAME` is created on the fly, also
 marked non-scannable — so e.g. `--board "Referral: Jane"` just works.
+
+## The question bank: stop re-answering the same form question
+
+Forms ask the same things (compensation, sponsorship, "which Go concurrency
+patterns do you favour"). Those answers live in the database in two layers, so
+*"is this frequently asked?"* is a `COUNT` rather than a judgement call:
+
+- `questions` — one canonical row per distinct question: the answer, the
+  reasoning behind it, and the wordings a form might use. Facts point at
+  `artifacts/profile.jsonc` (`answer_source = 'profile:$.location.city'`) so
+  there is one source of truth.
+- `question_instances` — one row per time a form actually asked it: the date,
+  the job, and the options that form showed.
+
+```bash
+python3 -m db.tools.questions lookup "compensation"      # before you fill
+python3 -m db.tools.questions record --key <slug> \
+    --question "<the form's question>" --answer "<the answer>" \
+    --label "<this form's label>" --field-type text --required \
+    --application-id <id>                                 # after you fill
+python3 -m db.tools.questions frequency                   # what recurs
+python3 -m db.tools.questions promotions                  # facts -> profile.jsonc
+python3 -m db.tools.questions digest --kind application   # regenerate the FAQ
+```
+
+A `lookup` that returns nothing is the signal that a question is new; a
+question asked twice has earned a stable key. `artifacts/faqs/*.md` are
+generated from the bank (private — `artifacts/` is gitignored), so record
+answers here and regenerate, never hand-edit both.
 
 ## Cron
 

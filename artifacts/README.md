@@ -17,6 +17,7 @@ Scripts and workflows expect these filenames:
 | `profile.jsonc` | Personal facts for form filling (name, email, phone, location, links, work-auth answers, targeting, positioning) — private, read before filling any application |
 | `scripts/` | Helper scripts for the semi-auto workflow (e.g. `embed_resume.sh` — chunked base64 resume upload into Greenhouse pages) |
 | `generated/` | Machine-built files (e.g. generated resume PDFs) — superseded by hand-tuned originals unless noted |
+| `faqs/` | **Generated** interview/application Q&A (`application-faq.md`, `technical-faq.md`) — rendered from the question bank by `python3 -m db.tools.questions digest`; edit the bank with `record`, not these files |
 
 Get started by copying the placeholders:
 
