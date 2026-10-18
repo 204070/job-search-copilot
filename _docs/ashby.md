@@ -24,11 +24,12 @@ never canonical; each posting's lists differ.
   text, the field wins.
 - Worked case (18/10/2026): the Toggl Senior Full Stack listing on We Work
   Remotely said "work from anywhere in the world as long as your main location
-  is between UTC-4 and UTC+4" (Lagos is UTC+1, so it read as eligible, and the
-  scanner tagged it `worldwide` from that sentence). Toggl's own Ashby page
-  listed `Serbia; Croatia; France; Poland; Portugal; Spain`. Nigeria is not in
-  that list → **not eligible**, caught only because the form was opened. The
-  job was archived with `reason_for_archive` in `jobs.metadata`.
+  is between UTC-4 and UTC+4" (a UTC+1 location sits inside that band, so it
+  read as eligible, and the scanner tagged it `worldwide` from that sentence).
+  Toggl's own Ashby page listed `Serbia; Croatia; France; Poland; Portugal;
+  Spain`. The candidate's country is not in that list → **not eligible**,
+  caught only because the form was opened. The job was archived with
+  `reason_for_archive` in `jobs.metadata`.
 - The inverse also holds: Supabase's `Location` read `Remote, Global`, which
   matches its "We hire globally" copy → apply.
 - Rule of thumb: an aggregator's (WWR, Real Work From Anywhere, RemoteOK,
@@ -49,7 +50,7 @@ input + `Upload file` button) and can populate the system fields.
 | Country of Residence | text | profile `location.country` |
 | Are you over the age of 18? | Yes / No buttons | Yes |
 | Experience with most relevant tech | textarea | resume-grounded, see below |
-| Github Profile | text | repo `github.com/204070` |
+| Github Profile | text | the handle's GitHub profile from `profile.jsonc`/resume |
 | Open source contributions | textarea | truthful: own public repos |
 | Linkedin | text | profile `linkedin` |
 | Where did you hear about this vacancy? | radio set | `Other online job boards` (came via Real Work From Anywhere) |

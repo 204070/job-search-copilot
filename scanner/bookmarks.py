@@ -9,7 +9,7 @@ local employer will never surface if its row says `Unknown`.
 This pulls the three fields a lead needs out of the text:
 
   company   "Acme is expanding" / "Join Northwind Software" / "brightpath (yc-w23)"
-  location  "(Spain)" / "(Remote)" / "Lagos"
+  location  "(Spain)" / "(Remote)" / a named city
   title     "Senior Full Stack Developer", with the tweet's own wording kept
             as the description when no role phrase is present
 
