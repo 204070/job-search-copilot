@@ -72,7 +72,14 @@ input + `Upload file` button) and can populate the system fields.
   Ashby custom questions are read by engineers, so name concrete systems, not
   adjectives.
 - The tech textarea here asked specifically about **Go, Typescript, Databases,
-  IaC** — address each of the four in order and lead with the strongest.
+  IaC** — address each of the four, leading with TypeScript (the strongest).
+- **If the employer ships something the person has actually used, say so
+  outright, in the paragraph it belongs to.** Applying to Supabase, the
+  Databases paragraph leads with Supabase Auth, Row Level Security and Realtime
+  websockets wired into NestJS services, because that is this company's product
+  and the part of the role the person is closest to. Said plainly it reads as
+  use of *their* system; said vaguely it is one more PostgreSQL claim in a stack
+  of them. Ask at intake what the person has run on the employer's own platform.
 - **The resume is a floor, not a ceiling. Ask the person for their real tech
   surface before writing this one.** Drafting from `resume.pdf` alone once
   undersold badly: the resume omits Cassandra, ClickHouse,

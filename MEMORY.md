@@ -63,6 +63,12 @@
   real tech surface before writing any technical or infrastructure answer, then
   keep claims calibrated the other way too (Go: general side-project and
   exploration experience, not enterprise production).
+- **Name the employer's own product when the person has run it (18/10).** The
+  strongest thing in a technical answer is not the longest stack list, it is
+  "I have set this up in production" about the exact system the company sells.
+  For Supabase: Auth, Row Level Security and Realtime websockets wired into
+  NestJS. Ask at intake which of the employer's products the person has used
+  before drafting, because it will not be in the resume.
 - **An ATS form has no draft.** A session tab that returns to `about:blank`
   loses every field. Fill in one pass and hand over for submission at once.
   Ids also regenerate per load on Ashby. Details: `_docs/tooling.md`.
