@@ -281,3 +281,17 @@
   `profile.jsonc`, so the promotion loop was lossy — `questions promotions`
   now lists those. Known limit: `lookup` matches on shared words, so a form
   wording with no word in common misses until the phrasing is added as an alias.
+- **A control that says the click succeeded can still have committed nothing
+  (18/10).** Two react-select fills on the same Greenhouse form came back
+  `{clicked: true, matches_n: 1}` and left the field empty; the same option
+  went in immediately once its highlight was walked onto with the arrow keys and
+  Enter was pressed while the menu was open. Verify the committed value, never
+  the click, and mind the trap that made the first check meaningless:
+  `closest('[class*=select]')` matches the input itself, so the single-value
+  lookup finds nothing and every field reads as uncommitted, including ones that
+  are set. Recipe and guards: `_docs/greenhouse.md`. Same sitting, same shape of
+  problem: the board's school picker exposes only the first page of its
+  2466-school list and ignores the query string, so a non-US university cannot
+  be picked at any spelling. The field was optional, the resume carried the
+  education, and saying so was better than substituting a school that is not
+  theirs.

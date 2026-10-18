@@ -26,19 +26,41 @@ to one form — never canonical; each posting's lists differ.
 - For combobox inputs use `type '<css>' '<text>'` (two args). Single-arg `type`
   treats its arg as a target → types nothing; `fill` only suits plain text
   inputs.
-- `type` clicks first (may toggle an open menu closed — harmless), then
-  `keys ArrowUp` + `keys ArrowDown` to reopen the FILTERED menu (filter text
-  persists), wait ~2s, then CDP-`click` the visible option by its react-select
-  id (`#react-select-<inputid>-option-<n>`). Verify via
-  `[class*=single-value]` text, NOT `input.value` (react-select clears it).
+- **Commit with the keyboard, not a click.** `opencli click` on an option id
+  returns `{clicked: true, matches_n: 1}` and still leaves the field empty
+  (reproduced twice, 18/10/2026). The path that commits, in order:
+  1. `type '<css>' '<full option text>'` so the filtered menu holds ONE option.
+     Option indexes are per filtered list, so a wide filter leaves the
+     highlight a guess.
+  2. Read `aria-expanded` on the input and require `"true"` (one `keys
+     ArrowDown` opens it when `type` left it closed).
+  3. Walk the highlight onto the exact option by watching
+     `aria-activedescendant` on the input, which is where react-select
+     publishes the focused option id: press `keys ArrowDown` until it equals
+     the wanted `#react-select-<inputid>-option-<n>`. Do not count keystrokes;
+     one extra ArrowDown landed the form on the wrong city.
+  4. `keys Enter`, and **only while the menu is open**: react-select
+     preventDefaults it there, but a closed menu lets Enter submit the form.
+- Verify through `[class*=single-value]` inside
+  `el.closest('[class*=select__value-container]')`, never `input.value`. Watch
+  the trap: `closest('[class*=select]')` matches the input itself, so the
+  lookup silently finds nothing.
 - City-style comboboxes lazy-load: no options render until filter text is
   entered.
-- The phone widget (intl-tel-input) injects ~240 hidden `[role=option]` items
-  (`li`, ids `iti-*`) → when hunting options for OTHER selects, exclude
-  `!/^iti/`. Trusted CDP `click` on options works; synthetic eval
-  mousedown+click dies on the hidden decoys.
-- The dial-code combobox's own options are `#react-select-country-option-*`
-  entries; the national number goes into `#phone` via `fill`.
+- The School field is an async combobox over a PARTIAL list: the board's
+  schools endpoint reports 2466 schools at 100 per page and ignores the query
+  string, so the widget filters only the slice it has loaded (A names on
+  18/10/2026) and a non-US school can be unselectable at any spelling. It is
+  optional on these forms; report it rather than forcing a pick.
+- The phone widget's dial-code combobox is `#country` (react-select classes
+  plus the flag), NOT a country-of-residence question. Set it through
+  intl-tel-input's own dropdown: `click '.iti__selected-country'`, `fill
+  '.iti__search-input' '<country>'`, then click the option id it renders
+  (`#iti-0__item-ng` for Nigeria). The widget then reformats `#phone` to the
+  national convention (`8032538103` → `0803 253 8103`).
+- The widget injects ~240 hidden `[role=option]` items (`li`, ids `iti-*`) →
+  when hunting options for OTHER selects, exclude `!/^iti/`. A synthetic
+  eval mousedown+click dies on those decoys.
 - "Toggle flyout" button clicks do nothing; focus/type/keys opens the menu.
 
 ## Adapting profile facts (worked example: gh_jid 6188234004, 17/10/2026)
