@@ -19,7 +19,10 @@
   also Cassandra, ClickHouse, Heroku/Vercel/Netlify/Cloudflare, bare-metal and
   VPS deployments with Dokploy/Coolify/Kamal, Terraform/Ansible/GitHub
   Actions/Jenkins. Go is real but at side-project and exploration level, not
-  enterprise production — keep it general when writing answers.
+  enterprise production — keep it general when writing answers. The years figure
+  is stated per application, not fixed: prose says "over 8", the current PDF
+  prints "7+", and the user updates the CV for some roles, so check which CV is
+  actually attached instead of assuming either number.
 - **Eligibility:** `jobs.region_scope` (worldwide / us_only / region_gated /
   unknown) tags where a posting says it will hire; `us_only` is the only real
   bar. A `region_gated` list can *include* you (EMEA, MEA, Africa) or exclude
@@ -173,11 +176,28 @@
 - **Email applications are a second channel (18/10).** Some postings name an
   address instead of a form ("send your CV to ..."), which skips the whole fill
   runbook: the work is the draft plus the checks around it (address on the
-  employer's own domain, real ad recovered, From address matching the attached
-  resume, the ad's own subject-line instruction followed). Draft lives in
+  employer's own domain, real ad recovered, From address recorded, the ad's own
+  subject-line instruction followed). Draft lives in
   `artifacts/applications/<date>-<company>-<role>.md`, application row
   `method='email'`. The reply lands in the mailbox, so the day-7 chase clock
   applies to the mailbox. Section in `_docs/team/application-specialist.md`.
+- **Emphasis is tailored; the FACTS are not (18/10).** Deliberately leading with
+  PCI DSS for a regulated payments employer is not a commitment to lead with it
+  on a dev-tools one, so the two belong in different stores: atomic facets and
+  the user's own preferences in `profile.jsonc` (`experience.facets` is a list of
+  true statements, never one chosen emphasis), and the wording actually sent for
+  a role in the question bank (`kind = application`). The bank is what makes the
+  next application faster instead of merely different. Record what went out as
+  the answer, not a skeleton: the derived state compares the answer against the
+  instance ledger, so a placeholder canonical reads `revised` forever and raises
+  a warning that can never clear. The reusable rule goes in `--reasoning`.
+- **An aggregator's "we hire globally" is not the employer's region tag (18/10).**
+  One employer tags its own board Global / AMER / EMEA / APAC; the aggregator row
+  for an AMER role said "We hire globally", which flattened that tag and let the
+  role rank as `worldwide` and eligible. Triage order now reads the region word,
+  but the tag itself still comes from stored text: check the employer's own page
+  before treating such a row as open, exactly as with the structured Ashby
+  Location field. Two occurrences now, so treat a board copy as a hint by default.
 - **`upsert_job` refreshes only `last_seen_at`** for a job it already has, so
   any improvement to an extractor reaches nothing stored earlier. Derivation
   must be a re-runnable pass: `classify` (region), `enrich_companies` (RSS
