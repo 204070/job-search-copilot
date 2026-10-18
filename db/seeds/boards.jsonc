@@ -37,6 +37,28 @@
       "scan_config": { "source": "remotive", "endpoint": "https://remotive.com/api/remote-jobs?category=software-dev" }
     },
     {
+      "name": "Jobicy",
+      "kind": "job_board",
+      "url": "https://jobicy.com/",
+      "enabled": 1,
+      "notes": "Public JSON API. `jobGeo` states the region per posting (\"Anywhere\" / \"USA\" / country lists), which the region-scope tag reads directly.",
+      "scan_strategy": "api",
+      "scan_config": {
+        "source": "mapped",
+        "endpoint": "https://jobicy.com/api/v2/remote-jobs?count=50",
+        "items": "jobs",
+        "source_ref": "id",
+        "fields": {
+          "title": "jobTitle",
+          "company": "companyName",
+          "url": "url",
+          "location": "jobGeo",
+          "description": "jobDescription",
+          "posted_at": "pubDate"
+        }
+      }
+    },
+    {
       "name": "Crossover",
       "kind": "job_board",
       "url": "https://www.crossover.com/",
@@ -179,6 +201,17 @@
       "notes": "Scraped via JobSpy; LinkedIn rate-limits bursts (results kept low).",
       "scan_strategy": "jobspy",
       "scan_config": { "source": "linkedin", "search_term": "senior software engineer", "location": "Remote", "results_wanted": 25, "hours_old": 36 }
+    },
+    {
+      "name": "Jobspresso",
+      "kind": "job_board",
+      "url": "https://jobspresso.co/",
+      "enabled": 1,
+      "notes": "Verified dev-category WP Job Manager feed; company and location ride in job_listing:* tags and the body in content:encoded.",
+      "scan_strategy": "rss",
+      "scan_config": {
+        "feed_url": "https://jobspresso.co/?feed=job_feed&job_listing_category=programming"
+      }
     },
     {
       "name": "X Bookmarks",

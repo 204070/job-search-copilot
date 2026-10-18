@@ -9,19 +9,81 @@ against `scanner/keywords.jsonc`, and appends new matches to
 
 | strategy | handler | config keys | notes |
 |---|---|---|---|
-| `rss`     | `scanner/fetchers.fetch_rss`     | `feed_url` | RSS 2.0, namespace-tolerant; repairs bare `&`/double-encoded entities (WWR, Himalayas, Real Work From Anywhere) |
-| `api`     | `scanner/fetchers.fetch_api`     | `source` (`remotive`/`remoteok`), `endpoint` | public JSON APIs |
+| `rss`     | `scanner/fetchers.fetch_rss`     | `feed_url` | RSS 2.0, namespace-tolerant; repairs bare `&`/double-encoded entities; reads `content:encoded` when `description` is empty; recovers an employer embedded in the title (WWR, Himalayas, Real Work From Anywhere) |
+| `api`     | `scanner/fetchers.fetch_api`     | `source` (`remotive`/`remoteok`/`mapped`), `endpoint` | public JSON APIs; `mapped` needs no code — see below |
 | `jobspy`  | `scanner/fetchers.fetch_jobspy`  | `source`, `search_term`, `location`, `results_wanted`, `hours_old` | needs `pip install python-jobspy` |
 | `html`    | `scanner/fetchers.fetch_html` (mode-dispatched) | `mode` (+ mode keys: `profile_dir`, `scrolls`, `cap` for `x_bookmarks`) | browser-scraped boards; unknown `mode` = "not scanned yet" |
 | `manual`  | never auto-scanned | — | e.g. saved Google searches |
 
+### `source: mapped` — a JSON board with no new code
+
+`scan_config` names the list and the field paths:
+
+```jsonc
+{ "source": "mapped", "endpoint": "https://jobicy.com/api/v2/remote-jobs?count=50",
+  "items": "jobs", "source_ref": "id",
+  "fields": { "title": "jobTitle", "company": "companyName", "url": "url",
+              "location": "jobGeo", "description": "jobDescription",
+              "posted_at": "pubDate" } }
+```
+
+Recognised `fields` keys are the ones `store.upsert_job` takes; `description`
+is HTML-stripped, `location`/`company` are trimmed to `None` when empty. Add a
+branch in `fetch_api` only when a board needs real logic.
+
 Active sources: WWR (programming RSS), Himalayas (RSS), Real Work From
-Anywhere (RSS), Remotive + RemoteOK (APIs), Indeed/LinkedIn/ZipRecruiter
-(JobSpy), X Bookmarks (Playwright, your own session). ZipRecruiter currently
-returns 403 from this network; LinkedIn rate-limits. 6 `html` boards stay
-pending — reconnaissance status for each lives in `boards.notes` (migration
-0009); paywalled/dormant boards (Remote4Africa, RemoteAfrica, Crossover) are
+Anywhere (RSS), Jobspresso (dev-category RSS), Jobicy (mapped API), Remotive +
+RemoteOK (APIs), Indeed/LinkedIn/ZipRecruiter (JobSpy), X Bookmarks
+(OpenCLI/Playwright, your own session). ZipRecruiter currently returns 403 from
+this network; LinkedIn rate-limits. 6 `html` boards stay pending —
+reconnaissance status for each lives in `boards.notes` (migration 0009);
+paywalled/dormant boards (Remote4Africa, RemoteAfrica, Crossover) are
 `manual`, Cleverjobs is disabled.
+
+
+## Region scope: can you actually take this job?
+
+The boards are overwhelmingly US-facing (Indeed/LinkedIn) plus region-gated
+marketplaces, so an unread board made "Remote, USA" and "Remote" look
+identical. `jobs.region_scope` tags where each posting says it will hire:
+
+| scope | meaning |
+|---|---|
+| `worldwide` | the posting says it hires anywhere |
+| `us_only` | it demands US residence or US work authorisation |
+| `region_gated` | it names specific countries or regions (a list to check) |
+| `unknown` | it states no restriction — the common case, and **not** a bar |
+
+It describes the **stated restriction, never the company's home country**: a US
+company with no restriction stays `unknown`, because plenty of them hire
+worldwide. Only `us_only` is a real bar. "US timezones"/"US hours" describe
+overlap and are NOT bars. Nothing is ever filtered out on this basis — the tag
+groups the board; the daily report sorts matches by scope first, so a role you
+can't take no longer buries one you can. `jobs.region_evidence` keeps the
+phrase that produced the tag.
+
+```bash
+python3 -m scanner.tools.classify              # re-tag every job, print counts
+python3 -m scanner.tools.classify --examples 3  # audit the tags by phrase
+python3 -m scanner.tools.classify --dry-run
+```
+
+The rules and their worked cases live in `scanner/eligibility.py`; run
+`python3 -m scanner.eligibility` to see the table the classifier is specified
+by. Classification is a separate pass over stored rows (not part of insert)
+because a re-discovered job keeps its original row, so a tag written at insert
+time would never refresh. `python3 -m scanner` runs it at the end of every scan.
+
+## Repairs for rows a re-scan cannot fix
+
+`upsert_job` only refreshes `last_seen_at` for a job it already has, so an
+improved extractor never reaches rows stored earlier. Two idempotent tools
+re-derive those in place:
+
+```bash
+python3 -m scanner.tools.enrich_bookmarks   # pull company/location/role out of bookmarked tweets
+python3 -m scanner.tools.enrich_companies   # recover an employer left inside an RSS title
+```
 
 ## Dedupe
 
@@ -83,6 +145,14 @@ has no bookmark read below Pro tier, and v1.1 — which had
   URL as the job URL); t.co links are resolved, X-internal targets
   (media/profile links) are skipped, and one tweet with several links
   becomes several jobs.
+- Tweets are **read as postings**, not stored as raw noise: `scanner/bookmarks.py`
+  pulls the company ("Acme is expanding", "Join Northwind Software",
+  "brightpath (yc-w23)"), the place ("(Spain)", "Remote", a named city) and the
+  role ("Senior Full Stack Developer") out of the prose, and flags `job_like` in
+  metadata. A tweet that reads like nothing in particular keeps its text and
+  `Unknown`. It is a heuristic on informal writing, so it never invents a value;
+  run `python3 -m scanner.bookmarks` for the worked cases. Rows stored before
+  the extractor existed are repaired with `scanner.tools.enrich_bookmarks`.
 - Intent beats score: `jobs.bookmarked_at` records the first sighting and
   survives URL dedupe even when another board already had the job; the daily
   report lists all bookmarked jobs under "Bookmarked on X", regardless of

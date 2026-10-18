@@ -57,7 +57,8 @@ Nothing here phones home: all state is the local SQLite file + your files.
 | Path | What |
 |---|---|
 | `db/jobs.db` | SQLite: `boards` → `jobs` → `applications` → `application_events`, plus the question bank (`questions`, `question_instances`) |
-| `scanner/` | fetchers (rss / api / jobspy / html modes) + store + matcher + CLI |
+| `scanner/` | fetchers (rss / api / jobspy / html modes) + store + matcher + region scope + CLI |
+| `scanner/tools/` | helpers: `add_job`, `classify`, `enrich_bookmarks`, `enrich_companies`, `probe_boards`, `x_login` |
 | `db/tools/questions.py` | the question bank CLI: `lookup` / `record` / `frequency` / `promotions` / `digest` |
 | `db/migrations/` | numbered schema files; `python3 -m db.migrate` applies new ones |
 | `db/seeds/` | curated boards (`boards.jsonc`); `python3 -m db.seed` syncs them |
@@ -106,6 +107,36 @@ python3 -m scanner.tools.add_job --title "Senior Backend Eng" \
 Hand-added jobs land on the `Manual` board (never scanned) and are scored
 like scanned jobs. Any unknown `--board NAME` is created on the fly, also
 marked non-scannable — so e.g. `--board "Referral: Jane"` just works.
+
+## Triage: can you actually take the job?
+
+A score says a posting matches your résumé. It says nothing about whether the
+employer will hire someone in your country — and the boards are mostly
+US-facing, so "Remote, USA" used to look exactly like "Remote". Every job now
+carries a `region_scope` tag read from the posting's own wording:
+
+| scope | meaning |
+|---|---|
+| `worldwide` | the posting says it hires anywhere |
+| `us_only` | it demands US residence or US work authorisation |
+| `region_gated` | it names specific countries or regions (a list to check) |
+| `unknown` | it states no restriction — the common case, and **not** a bar |
+
+It tags the **stated restriction, never the company's home country**: a US
+company that says just "Remote" stays `unknown`, because plenty of them hire
+worldwide, and "US timezones"/"US hours" are overlap, not bars. Only
+`us_only` is a real bar, and nothing is filtered out — the daily report just
+sorts matches by scope first, so a role you can't take can't bury one you can.
+`jobs.region_evidence` keeps the phrase that produced the tag, and
+`python3 -m scanner.tools.classify --examples 3` shows both.
+
+```bash
+python3 -m scanner.tools.classify                     # re-tag, print counts
+python3 -m scanner.tools.classify --examples 3         # audit by phrase
+python3 -m scanner.tools.enrich_companies              # employer hidden in an RSS title
+python3 -m scanner.tools.enrich_bookmarks              # job hidden in a bookmarked tweet
+python3 -m scanner.eligibility                         # the classifier's own test table
+```
 
 ## The question bank: stop re-answering the same form question
 

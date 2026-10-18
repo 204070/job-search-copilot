@@ -13,7 +13,12 @@
 - **Resumes:** uploadables in `artifacts/` (canonical `resume.pdf`;
   generated fallback `generated/resume-generated.pdf`).
 - **Target:** senior remote full-stack (React/TS, Node, Python); scored via
-  `scanner/keywords.jsonc`.
+  `scanner/keywords.jsonc`. Resume reality (gitignored detail in
+  `artifacts/profile.jsonc`): 7+ yrs fullstack, TS/Node + Postgres, Django/
+  Python, Go, AWS→Azure, PCI DSS, fintech.
+- **Eligibility:** `jobs.region_scope` (worldwide / us_only / region_gated /
+  unknown) tags where a posting says it will hire; `us_only` is the only real
+  bar. Detail: `_docs/scanning.md` → "Region scope".
 - **Identity facts:** `artifacts/profile.jsonc` — read before drafting/filling.
 - **Question bank:** `db/jobs.db` (`questions` + `question_instances`) behind
   `python3 -m db.tools.questions` — `lookup` before filling, `record` at
@@ -45,6 +50,39 @@
 
 ## Learnings (conversion, content, what works)
 
+- **Funnel was mis-shaped, not the scanner (18/10).** Of 195 real postings, 77
+  named the US and only ~6 stated worldwide; Indeed/LinkedIn (JobSpy) supply
+  mostly "Remote, USA". The fix is a *tag*, not a filter: `region_scope` +
+  `region_evidence`, report sorted by scope first, nothing hidden. Africa-only
+  filtering would be the wrong lesson — a US company posting worldwide is a
+  first-class lead. Recovery after the reset: 399 → 459 jobs.
+- **Eligibility is about the stated restriction, not the company's country.**
+  "USA timezones"/"US hours"/"US clients" are overlap wording, NOT bars
+  (profile accepts ET afternoons). A list mixing regions ("Europe, USA, Canada,
+  APAC") is `region_gated`, not `us_only`. Bare US state names ("Kansas") DO
+  count; two-letter codes are skipped (DE/IN/CA collide with countries).
+- **`upsert_job` refreshes only `last_seen_at`** for a job it already has, so
+  any improvement to an extractor reaches nothing stored earlier. Derivation
+  must be a re-runnable pass: `classify` (region), `enrich_companies` (RSS
+  title), `enrich_bookmarks` (tweets).
+- **Feeds hide the employer in the title.** Real Work From Anywhere ("Role at
+  Acme") and WWR ("acme: Role") shipped 152 rows as `Unknown`; 113 recovered
+  (Supabase, DuckDuckGo, Camunda, Metabase). `Unknown` rows are invisible to
+  any by-company lookup, so they silently vanish from a shortlist.
+- **X bookmarks DO hold real jobs** — the user was right to push back. 18/50
+  read as postings once parsed (a Nigerian fintech hiring backend devs with a
+  stated close date, a couple of YC-stage startups, several well-known remote
+  companies); before this they were all score-0 `Unknown` rows. Some false
+  positives (a startup fellowship, a "reverse engineer" musing) — the flag is
+  advisory, and a bookmark's contents stay in the gitignored DB.
+- **New verified sources (18/10):** Jobicy (mapped API; `jobGeo` is a direct
+  region signal: "Anywhere"/"USA"/country lists) and Jobspresso (dev-category
+  WP feed; namespaced `job_listing:company`/`:location` + body in
+  `content:encoded`). Arbeitnow verified but NOT added: German on-site roles,
+  no remote filter, would flood the board.
+- **`opencli` must be on PATH for the scanner's X-bookmarks mode.** Under cron
+  it reports "not installed"; in-shell it works once
+  `~/.local/share/vite-plus/bin` is on PATH.
 - Always check location + sponsorship before filling; archive early with `reason_for_archive` in job metadata.
 - Full semi-auto loop validated 17/10 (Fingerprint, applied): the runbook in
   `_docs/team/application-specialist.md` is proven — form bypass → agent

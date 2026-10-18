@@ -21,11 +21,18 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # repo root
 
 from db import connect  # noqa: E402
 from scanner import fetchers  # noqa: E402
+from scanner.eligibility import SCOPES, classify  # noqa: E402
 from scanner.keywords import Matcher, min_score  # noqa: E402
-from scanner.store import now_iso, upsert_job  # noqa: E402
+from scanner.store import classify_stored_jobs, now_iso, upsert_job  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent
 LEADS_DIR = ROOT / "logs" / "leads"
+
+#: Report order: a role that states no restriction is a better lead than one
+#: that names other regions, and both beat one that demands US work
+#: authorisation. Sorting by scope before score stops 77 "Remote, USA" postings
+#: from burying everything else on the page.
+SCOPE_RANK = {"worldwide": 0, "unknown": 1, "region_gated": 2, "us_only": 3}
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -78,6 +85,9 @@ def main(argv: list[str] | None = None) -> int:
             job["company"] = (job.get("company") or "").strip() or "Unknown"
             score, matched = matcher.score(job.get("title"), job.get("description"))
             job["match_score"] = score
+            scope, scope_evidence = classify(
+                job.get("location"), job.get("description")
+            )
             if args.dry_run:
                 status = "new"  # nothing written
             else:
@@ -85,11 +95,13 @@ def main(argv: list[str] | None = None) -> int:
             if status == "new":
                 new += 1
                 if score >= threshold:
-                    matches.append({**job, "board": name, "matched": matched})
+                    matches.append({**job, "board": name, "matched": matched,
+                                    "scope": scope, "evidence": scope_evidence})
             else:
                 seen += 1
             if (job.get("metadata") or {}).get("bookmarked"):
-                bookmarked.append({**job, "board": name, "status": status})
+                bookmarked.append({**job, "board": name, "status": status,
+                                   "scope": scope})
         if not args.dry_run:
             conn.execute(
                 "UPDATE boards SET last_checked_at = ? WHERE id = ?",
@@ -101,6 +113,12 @@ def main(argv: list[str] | None = None) -> int:
         lines.append(f"- {name}: {len(jobs)} fetched, {new} new, {seen} already known")
 
     # --- report -----------------------------------------------------------
+    # Re-tag the stored rows after the run so region_scope stays current even
+    # for jobs this scan only re-saw (upsert refreshes last_seen_at only).
+    scope_counts = None
+    if not args.dry_run:
+        scope_counts, _changed = classify_stored_jobs(conn)
+
     today = run_ts[:10]
     LEADS_DIR.mkdir(parents=True, exist_ok=True)
     report_path = LEADS_DIR / f"{today}.md"
@@ -108,18 +126,25 @@ def main(argv: list[str] | None = None) -> int:
             f"Threshold: score >= {threshold} | new: {new_total} | already known: {seen_total}",
             "\n### Boards"]
     body.extend(lines)
+    if scope_counts is not None:
+        body.append("\n### Region scope (whole board)")
+        body.append("  " + " | ".join(
+            f"{scope}: {scope_counts.get(scope, 0)}" for scope in SCOPES))
     if matches:
         body.append(f"\n### New matches ({len(matches)})")
-        for m in sorted(matches, key=lambda x: -x["match_score"]):
-            body.append(f"- **{m['match_score']}** {m['title']}"
+        body.append("Sorted by region scope first: a role that states no "
+                    "restriction ranks above one that names other regions, and "
+                    "both rank above one that demands US work authorisation.")
+        for m in sorted(matches, key=lambda x: (SCOPE_RANK[x["scope"]], -x["match_score"])):
+            body.append(f"- **{m['match_score']}** [{m['scope']}] {m['title']}"
                         f" — {m.get('company') or '?'} [{m['board']}] ({', '.join(m['matched'])})\n  {m['url']}")
     else:
         body.append("\nNo new matches this run.")
     if bookmarked:
         # Bookmark = user intent: shown regardless of match threshold.
         body.append(f"\n### Bookmarked on X ({len(bookmarked)})")
-        for b in sorted(bookmarked, key=lambda x: -x["match_score"]):
-            body.append(f"- **{b['match_score']}** {b['title']}"
+        for b in sorted(bookmarked, key=lambda x: (SCOPE_RANK[x["scope"]], -x["match_score"])):
+            body.append(f"- **{b['match_score']}** [{b['scope']}] {b['title']}"
                         f" — {b.get('company') or '?'} ({b['status']})\n  {b['url']}")
     if errors:
         body.append("\n### Errors")

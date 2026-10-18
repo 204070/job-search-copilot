@@ -1,15 +1,19 @@
-"""Persist fetched jobs with dedupe.
+"""Persist fetched jobs with dedupe, and tag where each posting is open.
 
-Dedupe relies on the two unique indexes from migration 0004:
+Dedupe relies on the two unique indexes:
   - ux_jobs_url:           the same posting URL is the same job, globally
   - ux_jobs_board_source_ref: a board's own id/guid, per board.
 
-A re-discovered job gets its last_seen_at refreshed instead of a new row.
+A re-discovered job gets its last_seen_at refreshed instead of a new row. That
+is why `classify_stored_jobs` exists as a separate pass: an existing row keeps
+its original text, so a tag derived at insert time would freeze. Re-deriving
+over the stored rows keeps `region_scope` current as the classifier improves.
 """
 from __future__ import annotations
 
 import json
 import sqlite3
+from collections import Counter
 from datetime import datetime, timezone
 
 
@@ -88,3 +92,47 @@ def upsert_job(conn: sqlite3.Connection, board_id: int, job: dict) -> tuple[str,
             raise
         conn.execute("UPDATE jobs SET last_seen_at = ? WHERE id = ?", (ts, row["id"]))
         return "seen", row["id"]
+
+
+def classify_stored_jobs(
+    conn: sqlite3.Connection,
+    *,
+    board_id: int | None = None,
+    only_missing: bool = False,
+    dry_run: bool = False,
+) -> tuple[Counter, int]:
+    """Re-derive `region_scope`/`region_evidence` for stored jobs.
+
+    Returns (counts by scope, rows changed). Re-runnable and idempotent, so it
+    can run after every scan and by hand whenever the classifier improves.
+    `only_missing` limits the pass to rows never tagged (scope unknown and no
+    evidence), for a cheap incremental run. `dry_run` counts what would change
+    without writing it.
+    """
+    from scanner.eligibility import classify
+
+    sql = "SELECT id, location, raw_text, region_scope, region_evidence FROM jobs"
+    params: list = []
+    if board_id is not None:
+        sql += " WHERE board_id = ?"
+        params.append(board_id)
+
+    counts: Counter = Counter()
+    changed = 0
+    for row in conn.execute(sql, params).fetchall():
+        if only_missing and not (
+            row["region_scope"] == "unknown" and row["region_evidence"] is None
+        ):
+            continue
+        scope, evidence = classify(row["location"], row["raw_text"])
+        counts[scope] += 1
+        if scope != row["region_scope"] or evidence != row["region_evidence"]:
+            changed += 1
+            if not dry_run:
+                conn.execute(
+                    "UPDATE jobs SET region_scope = ?, region_evidence = ? WHERE id = ?",
+                    (scope, evidence, row["id"]),
+                )
+    if not dry_run:
+        conn.commit()
+    return counts, changed

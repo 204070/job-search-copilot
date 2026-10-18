@@ -19,6 +19,8 @@ from datetime import date, datetime
 from pathlib import Path
 from urllib.parse import urljoin
 
+from scanner import bookmarks
+
 USER_AGENT = "job-search-copilot/1.0 (personal job-search bot)"
 
 
@@ -77,6 +79,11 @@ def fetch_api(board: dict, cfg: dict) -> list[dict]:
         data = json.loads(_http_get(cfg["endpoint"]))
         # First element is a legal/meta notice dict, not a job.
         items = [j for j in data if isinstance(j, dict) and j.get("position")]
+    elif source == "mapped":
+        # A board whose JSON needs no code: scan_config names the list and the
+        # per-field paths, e.g. Jobicy's {"items": "jobs",
+        # "fields": {"title": "jobTitle", "location": "jobGeo", ...}}.
+        return _fetch_mapped(json.loads(_http_get(cfg["endpoint"])), cfg)
     else:
         raise ValueError(f"unsupported api source: {source!r}")
 
@@ -108,6 +115,50 @@ def fetch_api(board: dict, cfg: dict) -> list[dict]:
                 "salary_max": (j.get("salary_max") or None),
                 "metadata": {"tags": j.get("tags") or []},
             })
+    return jobs
+
+
+def _dig(obj, path: str):
+    """Follow a dotted path ("jobs" / "a.b") into JSON, or None."""
+    value = obj
+    for part in path.split("."):
+        if not isinstance(value, dict):
+            return None
+        value = value.get(part)
+    return value
+
+
+def _fetch_mapped(data, cfg: dict) -> list[dict]:
+    """Normalise a JSON board from scan_config, with no board-specific code.
+
+    scan_config:
+        items   dotted path to the array (default "data")
+        fields  our key -> dotted path in one item. Recognised keys are the
+                ones `store.upsert_job` takes; `description` is HTML-stripped
+                and `location`/`company` empty strings become None.
+    """
+    items = _dig(data, cfg.get("items", "data")) if cfg.get("items") else data
+    if not isinstance(items, list):
+        return []
+    fields = cfg.get("fields") or {}
+    jobs: list[dict] = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        job: dict = {}
+        for key, path in fields.items():
+            value = _dig(item, path)
+            if key == "description":
+                value = strip_html(value)
+            elif isinstance(value, str):
+                value = value.strip()
+                if key == "location":
+                    value = value or None
+            job[key] = value
+        job.setdefault("workplace_type", "remote")  # these boards are remote-only
+        ref = _dig(item, cfg["source_ref"]) if cfg.get("source_ref") else None
+        job["source_ref"] = str(ref) if ref is not None else None
+        jobs.append(job)
     return jobs
 
 
@@ -288,18 +339,23 @@ def _parse_bookmark_tweets(page, cap: int) -> list[dict]:
                     targets.append(final)
         if not targets:
             targets = [permalink]
-        title = re.sub(r"\s+", " ", text) or f"X bookmark {path.rsplit('/', 1)[-1]}"
+        # A bookmark is usually a posting in disguise: pull the company, place
+        # and role out of the prose instead of storing the tweet as "Unknown".
+        info = bookmarks.enrich(text, targets[0])
+        title = (info["title"] or re.sub(r"\s+", " ", text)
+                 or f"X bookmark {path.rsplit('/', 1)[-1]}")
         for i, target in enumerate(targets):
             jobs.append({
                 "title": title[:160],
-                "company": None,  # unknown; __main__ stores 'Unknown'
+                "company": info["company"],  # None; __main__ stores 'Unknown'
                 "url": target,
                 "source_ref": path if i == 0 else f"{path}#{i}",
                 "description": text or None,
-                "location": None,
-                "workplace_type": "unknown",
+                "location": info["location"],
+                "workplace_type": bookmarks.workplace_type(info["location"]),
                 "posted_at": _iso(posted),
-                "metadata": {"via": "x_bookmarks", "tweet": permalink, "bookmarked": 1},
+                "metadata": {"via": "x_bookmarks", "tweet": permalink,
+                             "bookmarked": 1, "job_like": int(info["job_like"])},
             })
     return jobs
 
@@ -398,18 +454,21 @@ def _parse_opencli_tweets(tweets: list[dict], cap: int) -> list[dict]:
                 targets.append(final)
         if not targets:
             targets = [permalink]
-        title = re.sub(r"\s+", " ", text) or f"X bookmark {path.rsplit('/', 1)[-1]}"
+        info = bookmarks.enrich(text, targets[0])
+        title = (info["title"] or re.sub(r"\s+", " ", text)
+                 or f"X bookmark {path.rsplit('/', 1)[-1]}")
         for i, target in enumerate(targets):
             jobs.append({
                 "title": title[:160],
-                "company": None,  # unknown; __main__ stores 'Unknown'
+                "company": info["company"],  # None; __main__ stores 'Unknown'
                 "url": target,
                 "source_ref": path if i == 0 else f"{path}#{i}",
                 "description": text or None,
-                "location": None,
-                "workplace_type": "unknown",
+                "location": info["location"],
+                "workplace_type": bookmarks.workplace_type(info["location"]),
                 "posted_at": posted,
-                "metadata": {"via": "x_bookmarks", "tweet": permalink, "bookmarked": 1},
+                "metadata": {"via": "x_bookmarks", "tweet": permalink,
+                             "bookmarked": 1, "job_like": int(info["job_like"])},
             })
     return jobs
 
@@ -485,6 +544,39 @@ def fetch(board: dict) -> list[dict]:
 
 # --- rss -------------------------------------------------------------------
 
+#: Words that mark the role part of a feed title, so "Acme: We're Great" is not
+#: read as company + role. Normalisation only; no scoring.
+_ROLE_ISH = re.compile(
+    r"\b(developer|engineer|designer|manager|analyst|scientist|architect|lead"
+    r"|devops|sre|programmer|consultant|specialist|full[- ]?stack"
+    r"|back[- ]?end|front[- ]?end|software|data|qa|test)\b",
+    re.I,
+)
+
+
+def split_company(title: str) -> tuple[str | None, str]:
+    """Separate an employer that is embedded in a feed title.
+
+    Returns (company, cleaned title). Feeds that omit an employer tag put it in
+    the title instead, in one of two shapes:
+
+        "Backend Engineer, Core APIs at Fingerprint"    -> ("Fingerprint", "Backend Engineer, Core APIs")
+        "bondex: Fullstack Web3 Engineer (Solidity)"    -> ("bondex", "Fullstack Web3 Engineer (Solidity)")
+
+    Only applies when the other half reads like a role, so a colon in an
+    ordinary title ("Sigma: Series B") is left alone.
+    """
+    text = " ".join((title or "").split())
+    match = re.match(r"^(?P<c>[^:]{2,40}):\s*(?P<t>\S.*)$", text)
+    if match and _ROLE_ISH.search(match.group("t")):
+        return match.group("c").strip(" .,-"), match.group("t").strip()
+    match = re.search(
+        r"\s+at\s+(?P<c>[A-Z][\w.&'’+-]*(?:\s+[A-Z][\w.&'’+-]*){0,3})$", text
+    )
+    if match and _ROLE_ISH.search(text[: match.start()]):
+        return match.group("c").strip(" .,-"), text[: match.start()].strip(" ,-")
+    return None, text
+
 def _local(tag: str) -> str:
     return tag.rsplit("}", 1)[-1]
 
@@ -509,12 +601,15 @@ def fetch_rss(board: dict, cfg: dict) -> list[dict]:
         title = html.unescape(html.unescape(title))
         if company:
             company = html.unescape(company)
+        else:
+            # No employer tag: some feeds embed it ("Role at Acme", "acme: Role").
+            company, title = split_company(title)
         jobs.append({
             "title": title,
             "company": company,
             "url": url,
             "source_ref": fields.get("guid") or url,
-            "description": strip_html(fields.get("description")),
+            "description": strip_html(fields.get("description") or fields.get("encoded")),
             "location": fields.get("location") or fields.get("locationRestriction"),
             "workplace_type": "remote",  # remote-only feeds
             "posted_at": _iso(fields.get("pubDate") or fields.get("date")),
