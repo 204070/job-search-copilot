@@ -41,15 +41,24 @@
 
 ## Reference docs
 
-- Per-ATS playbooks: `_docs/<ats>.md` (have: `greenhouse.md`) — load the
-  one matching the posting; adapt `profile.jsonc` facts to that form's
-  options case by case, never treat worked examples as canonical.
+- Per-ATS playbooks: `_docs/<ats>.md` (have: `greenhouse.md`, `ashby.md`) —
+  load the one matching the posting; adapt `profile.jsonc` facts to that
+  form's options case by case, never treat worked examples as canonical.
+  **Ashby:** read the Overview tab's structured `Location` field first; it is
+  authoritative over the posting text (see the Toggl case below).
 - Team playbooks: `_docs/team/<role>.md` (have: `application-specialist.md`)
   — the full runbook for a collaborative application fill.
 - Also in `_docs/`: `tooling.md` (browser bridge), `jobs-db.md`, `scanning.md`.
 
 ## Learnings (conversion, content, what works)
 
+- **Verify eligibility on the EMPLOYER's page, not the board's copy (18/10).**
+  Toggl's Senior Full Stack role read "anywhere in the world (UTC-4..UTC+4)" on
+  We Work Remotely and the scanner tagged it `worldwide`, but Toggl's own Ashby
+  page listed `Serbia; Croatia; France; Poland; Portugal; Spain`. Aggregator
+  text is a hint; the employer's structured ATS field is the fact. Check it
+  before filling anything, and archive with `reason_for_archive` when it fails.
+  Playbook: `_docs/ashby.md`.
 - **Funnel was mis-shaped, not the scanner (18/10).** Of 195 real postings, 77
   named the US and only ~6 stated worldwide; Indeed/LinkedIn (JobSpy) supply
   mostly "Remote, USA". The fix is a *tag*, not a filter: `region_scope` +
