@@ -40,11 +40,14 @@ first real scan:
    (`opencli profile list`). Then `python3 -m db.seed` (re-run any time;
    `--dry-run` previews, `--prune` disables boards you removed).
 2. **`scanner/keywords.jsonc`** — how jobs score. Replace the example terms
-   with words from your own resume: `field: "title"` entries are the OR-gate
-   (a posting scores 0 unless its title matches one), `field: "any"` entries
-   are weighted coverage. Plain terms match word-boundaries; use `pattern`
-   for regex (alternations, optional words). Edits apply on the next scan —
-   no migrate needed.
+   with words from your own résumé. `title_exclude` regexes veto a posting
+   outright (so a support advert that name-drops Kubernetes stays at 0),
+   `title_admit` regexes are the gate, and `keywords` are weighted coverage.
+   `core_weight` sets what a full match means, so the long tail extends the
+   scale instead of compressing it. Plain terms match word-boundaries; use
+   `pattern` for regex (alternations, optional words). Edits apply to new
+   postings immediately, and to stored ones via
+   `python3 -m scanner.tools.rescore`.
 3. **`artifacts/` (private, gitignored)** — drop in your resume
    (`artifacts/resume.md` from the example), base cover letter, and
    `artifacts/profile.jsonc` (name, email, phone, location, links) so
@@ -58,11 +61,11 @@ Nothing here phones home: all state is the local SQLite file + your files.
 |---|---|
 | `db/jobs.db` | SQLite: `boards` → `jobs` → `applications` → `application_events`, plus the question bank (`questions`, `question_instances`) |
 | `scanner/` | fetchers (rss / api / jobspy / html modes) + store + matcher + region scope + CLI |
-| `scanner/tools/` | helpers: `add_job`, `classify`, `enrich_bookmarks`, `enrich_companies`, `probe_boards`, `x_login` |
+| `scanner/tools/` | helpers: `add_job`, `classify`, `rescore`, `enrich_bookmarks`, `enrich_companies`, `probe_boards`, `x_login` |
 | `db/tools/questions.py` | the question bank CLI: `lookup` / `record` / `frequency` / `promotions` / `digest` |
 | `db/migrations/` | numbered schema files; `python3 -m db.migrate` applies new ones |
 | `db/seeds/` | curated boards (`boards.jsonc`); `python3 -m db.seed` syncs them |
-| `scanner/keywords.jsonc` | scoring terms (plain or regex `pattern`); edits apply on next scan |
+| `scanner/keywords.jsonc` | scoring rules (admit/exclude regexes + weighted terms); stored jobs need `python3 -m scanner.tools.rescore` |
 | `logs/leads/` | daily scan reports (log output, gitignored) |
 | `artifacts/` | **your private documents** — resume, cover letters… gitignored; see `artifacts/README.md` |
 | `_docs/` | deeper docs: [`scanning.md`](_docs/scanning.md), [`jobs-db.md`](_docs/jobs-db.md) |
@@ -133,6 +136,7 @@ sorts matches by scope first, so a role you can't take can't bury one you can.
 ```bash
 python3 -m scanner.tools.classify                     # re-tag, print counts
 python3 -m scanner.tools.classify --examples 3         # audit by phrase
+python3 -m scanner.tools.rescore --top 20              # re-score after editing the scoring config
 python3 -m scanner.tools.enrich_companies              # employer hidden in an RSS title
 python3 -m scanner.tools.enrich_bookmarks              # job hidden in a bookmarked tweet
 python3 -m scanner.eligibility                         # the classifier's own test table

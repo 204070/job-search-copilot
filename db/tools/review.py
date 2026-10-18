@@ -46,8 +46,9 @@ DEFAULT_OUT_DIR = Path("logs/reviews")
 #: Sort key for where a posting hires. `unknown` stays visible on purpose.
 SCOPE_RANK = {"worldwide": 0, "unknown": 1, "region_gated": 2, "us_only": 3}
 
-#: Titles that look like this workspace's target roles even at score 0. Used to
-#: measure the scorer's blind spot, never to rank (see `_blind_spot`).
+#: Fallback for "this title reads like one of our roles", used only when the
+#: scanner's own gate cannot be loaded. The real answer comes from
+#: `Matcher.admits()`, so the report and the scorer cannot disagree.
 ENGINEERING_TITLE = re.compile(
     r"(?i)\b(engineer|developer|programmer|sre|devops|architect)\b")
 
@@ -55,8 +56,9 @@ ENGINEERING_TITLE = re.compile(
 CLOSED_STATUSES = ("rejected", "withdrawn", "archived")
 
 #: Below this score a posting is only listed when its title plainly names one of
-#: our roles. Matches the scanner's own MATCH_MIN_SCORE default, kept as a
-#: literal so this module does not import the scanner.
+#: our roles. Matches the scanner's own MATCH_MIN_SCORE default; a literal
+#: rather than a read, because this module only needs the scanner's gate
+#: (`_matcher`) and must still render when that import fails.
 RELEVANT_FLOOR = 15
 
 #: How many postings one employer may contribute to the shortlist.
@@ -154,23 +156,51 @@ def _count(conn: sqlite3.Connection, sql: str) -> int:
     return conn.execute(sql).fetchone()[0]
 
 
-def _blind_spot(conn: sqlite3.Connection, exclude_ids: set[int] | None = None,
-                limit: int = 12) -> tuple[int, list]:
-    """Bookmarked postings whose title reads like a target role but scored 0.
+def _matcher():
+    """The scanner's title gate, or None when the scanner cannot be loaded.
 
-    The scorer's title gate is a fixed list of phrasings, so whole families
-    ("Frontend Engineer", "Security Engineer", "SDK Engineer") fall to 0 and sink
-    out of any score-ordered shortlist. This reports the size of that hole. It
-    does not rank, because score 0 carries no ordering information.
+    This report used to carry its own copy of "what looks like a role" as a
+    regex, and the copy drifted from the scorer: it kept calling titles target
+    roles long after the gate had changed its mind. Reading the gate out of
+    the scoring config is the only way the two stay in step, so the scanner is
+    imported here, lazily and optionally, and the digest still renders if the
+    import or the config is broken.
+    """
+    try:
+        from scanner.keywords import Matcher
+        return Matcher()
+    except (ImportError, OSError, ValueError):
+        return None
+
+
+def _admits(matcher, title: str | None) -> bool:
+    """Whether the scoring gate admits this title (regex fallback if no gate)."""
+    if matcher is not None:
+        return matcher.admits(title)
+    return bool(ENGINEERING_TITLE.search(title or ""))
+
+
+def _blind_spot(conn: sqlite3.Connection, exclude_ids: set[int] | None = None,
+                limit: int = 12) -> tuple[int, int, list]:
+    """Bookmarked postings the gate admits whose stored text matches nothing.
+
+    Returns (total, how many have no stored text at all, samples). Since the
+    gate stopped being a fixed list of nine phrasings, this is no longer a hole
+    in the scorer: it is the honest remainder, either a row whose feed carried
+    no description, or an advert that names none of the stack. Both need a
+    human eye rather than a better keyword list, so this reports them and does
+    not rank them (score 0 carries no ordering information).
     """
     rows = conn.execute(
-        "SELECT id, title, company, region_scope, match_score, url FROM jobs"
+        "SELECT id, title, company, region_scope, match_score, url,"
+        " length(coalesce(raw_text, '')) AS textlen FROM jobs"
         " WHERE status = 'bookmarked' AND coalesce(match_score, 0) = 0"
     ).fetchall()
+    matcher = _matcher()
     skip = exclude_ids or set()
     hits = [r for r in rows
-            if r["id"] not in skip and ENGINEERING_TITLE.search(r["title"] or "")]
-    return len(hits), hits[:limit]
+            if r["id"] not in skip and _admits(matcher, r["title"])]
+    return len(hits), sum(1 for r in hits if not r["textlen"]), hits[:limit]
 
 
 def _unpushed_commits() -> int | None:
@@ -259,24 +289,25 @@ def section_applications(apps, today: date) -> list[str]:
 
 
 def section_next_roles(conn) -> list[str]:
-    """Section 3: bookmarked postings worth a look, and the scorer's blind spot."""
+    """Section 3: bookmarked postings worth a look, and what the gate leaves out."""
     out = ["## 3. Next roles", ""]
     ranked = conn.execute(
         "SELECT id, title, company, region_scope, region_evidence, match_score"
         " FROM jobs WHERE status = 'bookmarked'"
         "   AND id NOT IN (SELECT job_id FROM applications)").fetchall()
+    matcher = _matcher()
     # Same precedence the scanner report uses: where it hires outranks how well
     # it scores, so a worldwide posting is never buried under a US-only one.
     ranked.sort(key=lambda r: (SCOPE_RANK.get(r["region_scope"], 9),
                                -(r["match_score"] or 0)))
     # Drop the score-0 junk the feeds carry (writers, sales, assistants) while
-    # keeping score-0 postings whose title is plainly one of our roles, since
-    # those are exactly what the gate is failing to see.
+    # keeping a score-0 posting whose title the gate admits, since "right kind
+    # of role, nothing we recognise in the text" is a judgement for a human.
     top: list = []
     per_employer: dict[str, int] = {}
     for row in ranked:
-        if (row["match_score"] or 0) < RELEVANT_FLOOR and not ENGINEERING_TITLE.search(
-                row["title"] or ""):
+        if (row["match_score"] or 0) < RELEVANT_FLOOR and not _admits(
+                matcher, row["title"]):
             continue
         if per_employer.get(row["company"], 0) >= MAX_PER_EMPLOYER:
             continue
@@ -293,11 +324,13 @@ def section_next_roles(conn) -> list[str]:
                   [[f"#{r['id']}", (r['title'] or '')[:42], r['company'],
                     r['region_scope'], r['match_score']] for r in top])
 
-    total, samples = _blind_spot(conn, exclude_ids={r["id"] for r in top})
-    out += ["", f"**Scorer blind spot: {total} bookmarked postings read like a "
-            "target role but score 0.** The gate accepts a fixed list of "
-            "phrasings, so these are invisible to a score-ordered shortlist. "
-            "Read them by title until the gate is fixed:", ""]
+    total, empty, samples = _blind_spot(conn, exclude_ids={r["id"] for r in top})
+    out += ["", f"**Nothing matched in {total} admitted postings.** The title "
+            "gate accepts them, the ad text names none of the stack, so they "
+            "score 0 and stay out of the table above. "
+            f"{empty} of the {total} arrived with no description at all, which "
+            "makes them unscorable from here. Judge the rest by title: a role "
+            "can be a fit in a stack the list does not know yet.", ""]
     out += _table(
         ["job", "role", "employer", "scope"],
         [[f"#{r['id']}", (r['title'] or '')[:48], r['company'], r['region_scope']]

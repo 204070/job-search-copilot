@@ -77,12 +77,13 @@ time would never refresh. `python3 -m scanner` runs it at the end of every scan.
 ## Repairs for rows a re-scan cannot fix
 
 `upsert_job` only refreshes `last_seen_at` for a job it already has, so an
-improved extractor never reaches rows stored earlier. Two idempotent tools
+improved extractor never reaches rows stored earlier. Three idempotent tools
 re-derive those in place:
 
 ```bash
 python3 -m scanner.tools.enrich_bookmarks   # pull company/location/role out of bookmarked tweets
 python3 -m scanner.tools.enrich_companies   # recover an employer left inside an RSS title
+python3 -m scanner.tools.rescore            # re-derive match_score after the scoring config changed
 ```
 
 ## Dedupe
@@ -96,15 +97,34 @@ python3 -m scanner.tools.enrich_companies   # recover an employer left inside an
 
 ## Matching
 
-- Keywords come from `scanner/keywords.jsonc` (committed example — replace
-  terms with your own resume's; edits apply on the next run, no migrate).
-  Entries: `term`, `field` (`title` = OR-gate, `any` = weighted coverage),
-  `weight`, `enabled`; optional hand-written `pattern` regex override for
-  alternations/optional words plain terms can't express (invalid patterns
-  raise at load). Plain terms compile to case-insensitive `\bterm\b`.
-- Score = 100 × matched `any` weight / total weight; `MATCH_MIN_SCORE`
-  env (default 15). After editing entries, scores change on the next run;
-  old stored `match_score` values are historical, rescore by re-running.
+- Rules come from `scanner/keywords.jsonc` (committed example — replace the
+  terms with your own; edits apply on the next run, no migrate):
+  - `title_exclude` — regexes that veto a posting outright, checked first. This
+    is what keeps a "Support Engineer" advert that name-drops Kubernetes from
+    scoring like an infrastructure role.
+  - `title_admit` — regexes; the title must match at least one.
+  - `core_weight` — the weight tier that counts as a full match (see below).
+  - `keywords[]` — `term`, `weight`, `enabled`; optional hand-written `pattern`
+    regex override for alternations/optional words plain terms can't express
+    (invalid patterns raise at load). Plain terms compile to case-insensitive
+    `\bterm\b`, so `rust` never hits `robust`. A legacy `field: "title"` entry
+    still loads, as one more admit pattern.
+- Score = 100 × matched weight / target, capped at 99, where `target` is the
+  weight of the entries at or above `core_weight`. The target is the point: a
+  posting naming the whole core tier scores 100, and adding another incidental
+  term to the list cannot lower everybody else's score. Without `core_weight`
+  the target is the total weight, which is the older and dilution-prone shape.
+- `MATCH_MIN_SCORE` env (default 15) is the lead threshold.
+- A stored `match_score` is written at insert time and never refreshed by a
+  later scan (`upsert_job` only touches `last_seen_at`), so after editing the
+  config run `python3 -m scanner.tools.rescore` — `--dry-run` first, `--top 20`
+  to see what the new ranking actually puts first, `--only-below 15` for a cheap
+  pass over the low end.
+- A score answers "how much of the stack does this advert name", nothing else.
+  Two neighbouring questions have their own tools: whether the title is this
+  kind of role at all (`Matcher.admits()`, which reports use so their notion of
+  "looks like a role" cannot drift from the scorer's), and whether the posting
+  is open to where the person lives (`region_scope`, above).
 - **Classifier upgrade path**: replace the internals of
   `scanner/keywords.Matcher.score()` (or add `scanner/classifier.py` with the
   same contract) — nothing else changes.

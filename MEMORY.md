@@ -81,19 +81,24 @@
   Realtime websockets wired into NestJS. Ask at intake which of the employer's
   products the person has used before drafting, because it will not be in the
   resume.
-- **The score is a title gate, and the gate is a fixed list of phrasings
-  (18/10).** `scanner/keywords.py` scores 0 unless the TITLE matches one of nine
-  configured phrasings (`software engineer`, `full[- ]?stack`, `back[- ]?end`,
-  `platform engineer`, `devops|site reliability`, ...), then scores weighted
-  coverage of a 20-term `any` list. Measured on the live DB: 383 of 455
-  bookmarked postings score 0, the maximum anywhere is 45, and 104 score-0 rows
-  have titles that plainly name one of our roles (`Senior Frontend Engineer,
-  React/Typescript`, `SDK Engineer - Python`, `Cloud Security Engineer`,
-  `Senior Staff Software Engineer`). So the shortlist must be read by title, and
-  any "best fit" claim resting on `match_score` is not yet trustworthy. The `any`
-  list also predates the verified skills surface (no NestJS, Bun, ClickHouse,
-  Supabase, Azure/GCP, Ansible, Pulumi, Jenkins). Fixing the gate needs a
-  re-scoring pass, because `upsert_job` only refreshes `last_seen_at`.
+- **The score was a fixed title gate, and it hid whole role families
+  (18/10, fixed the same day).** `scanner/keywords.py` scored 0 unless the TITLE
+  matched one of nine configured phrasings, then took weighted coverage of a
+  20-term `any` list that predated the verified skills surface. Measured on the
+  live DB: 383 of 455 bookmarked postings scored 0, the maximum anywhere was 45,
+  and 104 score-0 rows had titles that plainly named one of our roles
+  (`Senior Frontend Engineer, React/Typescript`, `SDK Engineer`, `Cloud
+  Security Engineer`). Now
+  the gate is a rule with an admit half and an exclude half, the vocabulary is
+  the verified surface in three weight tiers, and the denominator is the core
+  tier rather than everything, so the tail extends the scale instead of
+  compressing it. Re-scored: 50 postings at 50+, 114 at or above the threshold.
+  Two learnings worth keeping: **a scoring change needs a re-scoring pass**,
+  because `upsert_job` only refreshes `last_seen_at` and the stored score is
+  therefore historical (hence `scanner/tools/rescore.py`); and **check what a
+  score promotion actually promotes** (`rescore --top 20`) before trusting it,
+  which is how the `engineering`-vs-`engineer` false negative and the
+  `react native` leak showed up.
 - **Do not pad an open source answer with a trivial public repo (18/10).** The
   person struck a small public Pulumi repository out of this answer: next to the
   rest of their experience it read as padding, and the question is a claim about

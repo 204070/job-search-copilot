@@ -136,3 +136,70 @@ def classify_stored_jobs(
     if not dry_run:
         conn.commit()
     return counts, changed
+
+
+# Score bands for reporting. The first band is the honest "nothing on the list
+# is named in this posting" bucket, which is not the same as "not our kind of
+# role" — see Matcher.admits() for that question.
+SCORE_BANDS: tuple[tuple[int, int, str], ...] = (
+    (0, 0, "0"),
+    (1, 14, "1-14"),
+    (15, 29, "15-29"),
+    (30, 49, "30-49"),
+    (50, 99, "50+"),
+)
+
+
+def score_band(score: int | None) -> str:
+    """Label a match score with its reporting band."""
+    s = score or 0
+    for lo, hi, label in SCORE_BANDS:
+        if lo <= s <= hi:
+            return label
+    return SCORE_BANDS[-1][2]
+
+
+def rescore_stored_jobs(
+    conn: sqlite3.Connection,
+    *,
+    board_id: int | None = None,
+    only_below: int | None = None,
+    dry_run: bool = False,
+) -> tuple[Counter, int]:
+    """Re-derive `match_score` for stored jobs from their stored text.
+
+    Returns (counts by score band, rows changed). Separate from the scan for
+    the same reason as `classify_stored_jobs`: a re-discovered job keeps its
+    row, and `upsert_job` only refreshes `last_seen_at`, so a score written at
+    insert time never refreshes. Re-running after the keyword config changes is
+    the whole point, so this is idempotent.
+
+    `only_below` limits the pass to rows scoring below a number, for a cheap
+    second look after the config improves. `dry_run` reports what would change
+    without writing it.
+    """
+    from scanner.keywords import Matcher
+
+    matcher = Matcher()
+    sql = "SELECT id, title, raw_text, match_score FROM jobs"
+    params: list = []
+    if board_id is not None:
+        sql += " WHERE board_id = ?"
+        params.append(board_id)
+
+    counts: Counter = Counter()
+    changed = 0
+    for row in conn.execute(sql, params).fetchall():
+        if only_below is not None and (row["match_score"] or 0) >= only_below:
+            continue
+        score, _ = matcher.score(row["title"], row["raw_text"])
+        counts[score_band(score)] += 1
+        if score != (row["match_score"] or 0):
+            changed += 1
+            if not dry_run:
+                conn.execute(
+                    "UPDATE jobs SET match_score = ? WHERE id = ?", (score, row["id"])
+                )
+    if not dry_run:
+        conn.commit()
+    return counts, changed
