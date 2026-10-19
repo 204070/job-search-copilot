@@ -59,8 +59,15 @@ opencli --profile g3pxjge8 browser jobfit tab close '<id>'
 
 ## Inspection gotchas
 
-- OpenCLI `eval` does not await promises — stash async results on `window.*`
-  and read back in a second call.
+- **`eval` awaits the promise it is handed** (measured 19/10/2026).
+  `eval 'new Promise(r => setTimeout(() => r("x"), 700))'` prints `x`, and an
+  async IIFE prints its resolved value, which is why an adapter can be one async
+  IIFE. A rejection is an error, not a value: exit 1, empty stdout, and
+  `✖ Error: <message>` plus a stack on stderr. That is how a board reports "my
+  session expired" so the caller cannot read it as "0 postings".
+- The `window.*` stash is for a value that arrives after the eval has returned:
+  `eval 'window.__x = f(); window.__x'` prints the immediate value, and a second
+  `eval 'window.__x'` prints the late one.
 - `eval` output can vanish when the CLI prints update notices to stdout —
   always pipe through `tail`/`grep`, or prefer `state` for readbacks.
 - Screenshots capture always works; whether the active model can VIEW them
