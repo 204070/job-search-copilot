@@ -257,6 +257,16 @@
 - **An ATS form has no draft.** A session tab that returns to `about:blank`
   loses every field. Fill in one pass and hand over for submission at once.
   Ids also regenerate per load on Ashby. Details: `_docs/tooling.md`.
+- **Tag the fields, then fill (19/10, application #8).** Because Ashby gives
+  every custom field wrapper a fresh UUID prefix on each render, the pass starts
+  by reading the rendered page and stamping each field with a
+  `data-fill="<key>"` attribute matched from its label, then fills through those
+  selectors. One pass, and no selector is chased after the id it was captured
+  from has moved. `opencli upload` answers `{"code":-32000,"message":"Not
+  allowed"}` on Ashby's styled file input, as on Greenhouse: the resume goes in
+  with `artifacts/scripts/embed_resume.sh <pdf> '#_systemfield_resume'` (that
+  script's default selector is Greenhouse's `#resume`, so the Ashby id must be
+  passed), verified afterwards by reading the byte size back off `input.files`.
 - **Verify eligibility on the EMPLOYER's page, not the board's copy (18/10).**
   A Senior Full Stack role read "anywhere in the world (UTC-4..UTC+4)" on a
   remote board and the scanner tagged it `worldwide`, but the employer's own

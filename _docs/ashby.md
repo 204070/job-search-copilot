@@ -82,6 +82,29 @@ actually surfaced the posting rather than the radio set's catch-all.
   Greenhouse (styled input swallowing the click), reuse the base64/DataTransfer
   recipe in `_docs/greenhouse.md` → `artifacts/scripts/embed_resume.sh`.
 
+## Filling it in one pass (validated 19/10/2026, application #8)
+
+- Enumerate the fields first, then stamp each input and textarea with a
+  `data-fill="<key>"` attribute chosen by matching its visible label, and do
+  every subsequent `fill` through `[data-fill="<key>"]`. Ashby regenerates the
+  UUID prefix on each render, so a selector captured from one read can be dead
+  by the time the fifth field is filled; the stamped attribute survives, and the
+  whole pass runs without re-reading ids between fields.
+- `opencli upload '#_systemfield_resume' artifacts/resume.pdf` answers
+  `{"code":-32000,"message":"Not allowed"}` (the styled attach UI swallows the
+  chooser), so use `artifacts/scripts/embed_resume.sh artifacts/resume.pdf
+  '#_systemfield_resume'` — note the Ashby selector, since the script defaults to
+  Greenhouse's `#resume`. Confirm afterwards by reading `input.files[0].size`
+  back and comparing it to the file: a filename in the drop zone alone is not
+  proof the bytes arrived.
+- Read the page back before handing over: every required field non-empty, no
+  `[aria-invalid=true]` or error nodes, submit enabled, and
+  `textarea[name=g-recaptcha-response]` still empty (that one is the human's).
+- Common Ashby custom questions worth expecting: a link to a code sample the
+  person is proud of plus why (banked as #28/#29, 19/10), an optional technical
+  writing sample, and a free-text "how did you hear about us" that takes the
+  board which actually surfaced the posting.
+
 ## Free-text answers
 
 - Answer from `artifacts/resume.pdf` facts and the user's real public repos.
