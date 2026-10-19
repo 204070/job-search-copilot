@@ -23,7 +23,12 @@ form, never canonical.
 ## Field inventory (worked example: job #2063, 19/10/2026)
 
 An optional **Autofill application** panel sits at the top with an
-`Import resume from` button. The form does not need it.
+`Import resume from` button. The form does not need it. It is not inert,
+though: run against the resume it fills the optional blocks itself (headline,
+summary, education, experience), so a form handed over with those blank can be
+submitted with text the agent never wrote. Either fill them from the resume, or
+read them back before hand-over, and put what they hold into the ledger. Worked
+case: application #10, 19/10/2026.
 
 | field | control | value used |
 |---|---|---|

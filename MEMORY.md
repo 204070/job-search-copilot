@@ -83,6 +83,9 @@ Short rules only. The worked cases live in the file each group points to.
 
 - Fill the whole form in one pass, then hand it over at once. An ATS form keeps
   no draft. → `_docs/team/application-specialist.md`
+- A form's own autofill panel can fill the optional blocks after you hand over.
+  Fill them yourself, or read them back, and write what went out. →
+  `_docs/workable.md`
 - Verify the committed value, not the click. A control can report success and
   commit nothing. → `_docs/greenhouse.md`
 - Answer the voluntary self-identification block from `profile.jsonc`

@@ -68,6 +68,18 @@ from, and what is ambiguous. Then they review and submit.
 - **Fill the whole form in one pass, then hand it over at once.** An ATS form
   keeps no server-side draft, so a part-filled form left between turns is lost
   work. Survival conditions and guards: `_docs/tooling.md`.
+- **Fill the optional fields, or read them back at handover: the form's own
+  autofill panel can fill them after you let go.** Ashby and Workable both ship
+  a panel above the form (`Autofill from resume`, `Import resume from`) that
+  populates the resume-derived blocks from the attached file, and the user may
+  run it before submitting. On application #10 the agent left headline, summary
+  and the education and experience blocks blank, the user ran the panel, and the
+  sent application carries text the ledger does not have, because the tab was
+  closed and the page kept no readable copy. Either fill those blocks yourself
+  from the resume, or screenshot them before hand-over, or say in the handover
+  that running the panel means telling the agent what it wrote. The ledger has
+  to hold what actually went out. Detail: `_docs/workable.md`,
+  `_docs/ashby.md`.
 - If the tab is `about:blank` or the form is gone, reopen and refill from
   scratch — losing state is normal, not an emergency. Work only in your tab:
   never close, navigate, or disturb anything else in their browser.
