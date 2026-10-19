@@ -168,22 +168,39 @@ section instead of six, and the marker needs no table of its own.
 |---|---|
 | `python3 -m db.tools.review` | Rewrite `artifacts/review.md` and print what needs action |
 | `digest --out PATH \| --stdout` | Write somewhere else, or print instead |
-| `follow-up --app 3 --in-days 7 [--note "..."]` | Schedule a chase: an `application_events` row with `scheduled_for` |
-| `submitted --app 6 [--method ...] [--confirmation URL] [--note "..."] [--date ISO]` | Record that the user sent it: the row goes to `applied` with `applied_at`, an `applied` event is appended, and the chase clock starts. Refuses a second recording |
-| `reply --app 6 --summary "..." [--details "..."] [--date ISO]` | Record contact FROM the employer that moves no status; this is what stops the chase clock |
+| `follow-up --app 3 --in-days 7 [--note "..."]` | Schedule a follow-up: an `application_events` row with `scheduled_for` |
+| `submitted --app 6 [--method ...] [--confirmation URL] [--note "..."] [--date ISO]` | Record that the user sent it: both rows go to `applied` (the application with `applied_at`), an `applied` event is appended, and the 7-day follow-up reminder counts from `applied_at`. Refuses a second recording |
+| `reply --app 6 --summary "..." [--details "..."] [--date ISO]` | Record contact FROM the employer that moves no status; this is what clears the follow-up reminder |
 | `resolve --event 4 [--note "..."]` | Mark a scheduled follow-up done (`metadata.done`, `done_at`) |
 | `dismiss --job 616 --reason "posting closed"` | Archive a lead, recording `metadata.reason_for_archive` |
 | `todo --add "..." [--owner user\|agent] [--context "..."]` | Remember an action that has no row behind it |
 | `todo` / `todo --close 3` | List the open ones, or close one |
 | `selftest` | Check the follow-up decision logic on fixed cases |
 
-The follow-up clock is 7 days after submission with no employer contact on
-record; only the suggestion is automatic, scheduling stays an explicit command.
-"Contact" is one list, `SIGNAL_EVENT_TYPES` in `db/tools/review.py`:
-`interview`, `offer`, `rejection`, `reply`. Our own `note` ("recon done",
-"form filled in one pass") and our own `follow_up` chase are NOT contact, so
-neither stops the clock. Before `reply` existed they did, which meant the better
-an application was documented the more reliably its chase went quiet.
+### The follow-up reminder
+
+Nothing runs in the background and nothing is "started" or "stopped": the
+reminder is a line the digest derives on every rewrite, from two inputs.
+
+1. **The date**: `applications.applied_at`, set by `review submitted` when the
+   form went out.
+2. **A contact check**: whether an `application_events` row of type
+   `interview`, `offer`, `rejection` or `reply` exists for that application
+   (`SIGNAL_EVENT_TYPES` in `db/tools/review.py`).
+
+With no contact row and `applied_at` at least `FOLLOW_UP_AFTER_DAYS` (7) days in
+the past, section 2 raises "Consider a follow-up" and section 3's next-action
+cell changes from `nothing yet (follow up on day 7)` to `consider a follow-up
+(out N days)`. Recording contact, or scheduling one with `follow-up --app N`,
+changes those same lines. Only the suggestion is automatic; scheduling stays an
+explicit command.
+
+Our own `note` ("recon done", "form filled in one pass") and our own `follow_up`
+rows are NOT contact, and must not be added to `SIGNAL_EVENT_TYPES`. When they
+were, our own notes cleared the reminder, so the better an application was
+documented the more reliably its reminder disappeared, and a freshly submitted
+one read "no action (a reply is on record)" with nobody having replied. `reply`
+is how contact that moves no status gets recorded.
 
 A `revised` bank answer is reported in section 6 but is not a task. Wording is
 chosen per application, so the stored text differing from what one employer

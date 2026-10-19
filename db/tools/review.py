@@ -12,7 +12,7 @@ this week. This tool reads the database and produces that page:
 
 One living file, rewritten in place, not a dated log. There is nothing to
 accumulate: the digest holds no state, and a stale item leaves the page by
-being resolved in the database (a chase closed, a lead archived, an answer
+being resolved in the database (a follow-up closed, a lead archived, an answer
 retired), not by being edited out of the text. Hand edits would be lost on
 the next rewrite, which is why every actionable line carries the command that
 closes it. The database is the memory; this page is a view.
@@ -40,9 +40,11 @@ Section 1 is the one that makes reading this "from time to time" cheap: it is
 computed against the `Refreshed:` line this file carried last time, so it needs
 no extra bookkeeping and cannot drift.
 
-The follow-up clock is `FOLLOW_UP_AFTER_DAYS`: an application that has been out
-that long with no reply on record is worth chasing. The digest only suggests
-that; scheduling is an explicit command so the signal stays yours.
+The follow-up reminder is a derivation, not a timer: with no employer-contact
+event on record (`SIGNAL_EVENT_TYPES`), the digest compares
+`applications.applied_at` with today and, once `FOLLOW_UP_AFTER_DAYS` days have
+passed, changes that application's next action from waiting to suggesting a
+follow-up. Scheduling one is an explicit command, so the signal stays yours.
 """
 
 from __future__ import annotations
@@ -58,7 +60,8 @@ from pathlib import Path
 
 from db.connection import connect
 
-#: Days after submission with no reply on record before a chase is suggested.
+#: Days between `applications.applied_at` and the digest suggesting a follow-up,
+#: when no employer-contact event is on record.
 FOLLOW_UP_AFTER_DAYS = 7
 
 #: The one living digest file (gitignored, via the `artifacts/` rule).
@@ -84,13 +87,16 @@ _EPOCH = datetime.min.replace(tzinfo=timezone.utc)
 #: Statuses that mean the application is over.
 CLOSED_STATUSES = ("rejected", "withdrawn", "archived")
 
-#: Event types that mean the OTHER side made contact, which is what stops the
-#: day-7 chase clock. A `note` is our own bookkeeping ("recon done", "form
-#: filled in one pass") and a `follow_up` is our own chase, so neither belongs
-#: here: letting them count silenced the clock on exactly the applications that
-#: were documented well enough to have notes. Contact that moves no status goes
+#: Event types that mean the OTHER side made contact. These, and only these,
+#: clear the follow-up reminder (see `follow_up_action`). A `note` is our own
+#: bookkeeping ("recon done", "form filled in one pass") and a `follow_up` is
+#: our own follow-up action, so neither belongs here: letting them count cleared
+#: the
+#: reminder on exactly the applications that were documented well enough to have
+#: notes, which is how a freshly submitted one came to read "no action (a reply
+#: is on record)" with nobody having replied. Contact that moves no status goes
 #: in as a `reply` (`review reply`). Kept as one list so the SQL and the docs
-#: cannot disagree about what a signal is.
+#: cannot disagree about what contact is.
 SIGNAL_EVENT_TYPES = ("interview", "offer", "rejection", "reply")
 _SIGNAL_IN = ", ".join(f"'{event_type}'" for event_type in SIGNAL_EVENT_TYPES)
 
@@ -169,8 +175,8 @@ def follow_up_action(
 ) -> str:
     """What (if anything) this application needs, as a short phrase.
 
-    `due_on` is an explicit scheduled follow-up date; it outranks the age clock,
-    because a scheduled date is a decision already made.
+    `due_on` is an explicit scheduled follow-up date, and it outranks the day
+    count, because a scheduled date is a decision already made.
     """
     if status == "ready_to_apply":
         return "submit it"
@@ -189,7 +195,7 @@ def follow_up_action(
         return "no action (no submission date)"
     if applied_days >= FOLLOW_UP_AFTER_DAYS:
         return f"consider a follow-up (out {applied_days} days)"
-    return f"let it breathe (chase on day {FOLLOW_UP_AFTER_DAYS})"
+    return f"nothing yet (follow up on day {FOLLOW_UP_AFTER_DAYS})"
 
 
 # --- queries ----------------------------------------------------------------
@@ -448,9 +454,9 @@ def section_needs_you(conn, apps, today: date) -> list[str]:
             days = days_since(row["applied_at"], today)
             if days is not None and days >= FOLLOW_UP_AFTER_DAYS and not row["last_signal"] and not due:
                 items.append(
-                    f"- [ ] **Consider chasing**: application #{row['app_id']} "
-                    f"({row['company']}) has been out {days} days with no reply "
-                    f"on record. Schedule it with "
+                    f"- [ ] **Consider a follow-up**: application #{row['app_id']} "
+                    f"({row['company']}) is {days} days out with no employer "
+                    f"contact on record. Schedule it with "
                     f"`python3 -m db.tools.review follow-up --app {row['app_id']} --in-days 1`.")
 
     # A `revised` bank answer is deliberately NOT a task here. Wording is
@@ -466,11 +472,12 @@ def section_needs_you(conn, apps, today: date) -> list[str]:
 def section_applications(apps, today: date) -> list[str]:
     """Section 3: every application, oldest decision first."""
     out = ["## 3. Applications", "",
-           "`age` is days since submission; `last signal` is the most recent "
-           "contact FROM the employer (an interview, an offer, a rejection, or "
-           "a reply that moves no status). Your own notes and the submission "
-           "itself do not count: the clock is for the applications nobody "
-           "answered.", ""]
+           "`age` is days since `applications.applied_at`; `last signal` is the "
+           "most recent contact FROM the employer (an interview, an offer, a "
+           "rejection, or a reply that moves no status). Our own notes and the "
+           "submission itself are not contact, so they never clear the reminder: "
+           f"at {FOLLOW_UP_AFTER_DAYS} days with none, the next action changes "
+           "from waiting to suggesting a follow-up.", ""]
     rows = []
     for row in apps:
         age = days_since(row["applied_at"], today)
@@ -692,8 +699,8 @@ def build_digest(conn: sqlite3.Connection, today: date | None = None,
         "",
         "```bash",
         "python3 -m db.tools.review                                # rewrite this file",
-        "python3 -m db.tools.review follow-up --app 4 --in-days 7  # schedule a chase",
-        "python3 -m db.tools.review resolve --event 12             # close a chase",
+        "python3 -m db.tools.review follow-up --app 4 --in-days 7  # schedule a follow-up",
+        "python3 -m db.tools.review resolve --event 12             # close one",
         "python3 -m db.tools.review todo --add \"...\"               # remember an action",
         "python3 -m db.tools.review todo --close 3                 # close one",
         "python3 -m db.tools.review dismiss --job 616 --reason \"...\"   # drop a lead",
@@ -798,9 +805,10 @@ def cmd_follow_up(conn: sqlite3.Connection, args: argparse.Namespace) -> int:
 def cmd_reply(conn: sqlite3.Connection, args: argparse.Namespace) -> int:
     """Record that the employer made contact.
 
-    The one event that stops the chase clock without moving a status, so it has
-    a command rather than a SQL statement: a reply that is never recorded is a
-    reminder looking at an application the employer has already answered.
+    A `reply` event is what clears this application's follow-up reminder without
+    moving its status, so it has a command rather than a SQL statement: a reply
+    that is never recorded leaves the digest suggesting a follow-up on an
+    application the employer has already answered.
     """
     row = conn.execute(
         "SELECT a.id, a.status, j.company, j.title FROM applications a JOIN jobs j"
@@ -819,17 +827,19 @@ def cmd_reply(conn: sqlite3.Connection, args: argparse.Namespace) -> int:
     print(f"recorded a reply on application #{args.app} ({row['company']}), "
           f"status {row['status']}")
     print(f"  {args.summary}")
-    print("  the chase clock is stopped; a status move is a separate event")
+    print("  the follow-up reminder is cleared; a status move is a separate event")
     return 0
 
 
 def cmd_submitted(conn: sqlite3.Connection, args: argparse.Namespace) -> int:
     """Record that the user sent the application.
 
-    The counterpart of `reply`: this one is OUR event, so it does not stop the
-    chase clock, it starts it. It refuses a second recording, because a second
-    `applied` event reads as a second submission and would restart the clock
-    every time the command was run.
+    The counterpart of `reply`: this event is OURS, so it does not clear the
+    follow-up reminder, it starts the count. It sets `applications.applied_at`,
+    which is what the day count is measured from, and it refuses a second
+    recording, because a second `applied` event reads as a second submission and
+    would move `applied_at` to today, pushing the reminder out another seven
+    days.
 
     Every private value is an argument (confirmation link, date, method, the
     line that shows in the digest), so the code stays generic and the facts stay
@@ -878,8 +888,8 @@ def cmd_submitted(conn: sqlite3.Connection, args: argparse.Namespace) -> int:
     print(f"application #{args.app} ({row['company']}): {row['status']} -> applied,"
           f" submitted {when}")
     print(f"  {summary}")
-    print("  chase clock running. Anything sent that differs from the bank goes in"
-          " as an instance:")
+    print("  applied_at set, so the follow-up reminder counts from this date."
+          " Anything sent that differs from the bank goes in as an instance:")
     print("  python3 -m db.tools.questions record --key <question>"
           " --answer-given \"<what went out>\" --application-id"
           f" {args.app}")
@@ -955,7 +965,7 @@ def cmd_selftest() -> int:
     today = "2026-10-18"
     cases = [
         (("ready_to_apply", None, False, None), "submit it"),
-        (("applied", 3, False, None), "let it breathe (chase on day 7)"),
+        (("applied", 3, False, None), "nothing yet (follow up on day 7)"),
         (("applied", 9, False, None), "consider a follow-up (out 9 days)"),
         (("applied", 12, False, "2026-10-20"), "follow up on 2026-10-20"),
         (("applied", 12, False, "2026-10-10"), "follow up now (was due 2026-10-10)"),
@@ -1071,9 +1081,9 @@ def cmd_selftest() -> int:
             print(f"FAIL  employer_cooldown: {why}\n"
                   f"      expected {expected!r}\n      got      {got!r}")
 
-    # What stops the chase clock: employer contact only. Our own notes and our
-    # own chases must never quiet it, because the applications most likely to be
-    # documented are the ones most likely to go unanswered.
+    # What clears the follow-up reminder: employer contact only. Our own notes
+    # and our own follow-ups must never count as contact, because the applications
+    # most likely to be documented are the ones most likely to go unanswered.
     for ours in ("note", "follow_up", "applied", "status_change", "withdrawal"):
         if ours in SIGNAL_EVENT_TYPES:
             failures += 1
@@ -1104,10 +1114,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--stdout", action="store_true", help="print instead of writing")
     p.set_defaults(func=cmd_digest)
 
-    p = sub.add_parser("follow-up", help="schedule a chase for an application")
+    p = sub.add_parser("follow-up", help="schedule a follow-up for an application")
     p.add_argument("--app", type=int, required=True, help="application id")
     p.add_argument("--in-days", dest="in_days", type=int, default=1)
-    p.add_argument("--note", help="what the chase is for")
+    p.add_argument("--note", help="what the follow-up is for")
     p.set_defaults(func=cmd_follow_up)
 
     p = sub.add_parser("reply", help="record contact from the employer")

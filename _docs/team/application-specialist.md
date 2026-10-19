@@ -155,13 +155,14 @@ claim came from where, and what is still theirs (attach, send).
 Record it the same way as a form application: the application row at
 `ready_to_apply` with `method = 'email'`, the address and deadline in
 `metadata`, and a `status_change` event. The reply lands in the user's mailbox,
-not a portal, so the day-7 chase clock applies to the mailbox.
+not a portal, so the 7-day follow-up reminder points at the mailbox.
 
 When something does arrive, record it: `python3 -m db.tools.review reply --app N
 --summary "what they said"` (add `--details` for the longer version, `--date` if
-it did not arrive today). That is the event that stops the chase clock. A `note`
-is our own bookkeeping and deliberately does not, so a recruiter reply written
-as a note leaves the digest chasing an application the employer has answered.
+it did not arrive today). That `reply` row is what clears the follow-up
+reminder. A `note` is our own bookkeeping and deliberately does not, so a
+recruiter reply written as a note leaves the digest suggesting a follow-up on an
+application the employer has answered.
 
 The pitch belongs in the bank too. Record the wording that went out as the
 answer, with the emphasis rule in `--reasoning`:
@@ -226,8 +227,8 @@ mismatch, stale listing, etc.) **before or during fill**:
 
 ## After submit (human confirms)
 
-Flip the application row with one command, which records the submission and
-starts the chase clock:
+Flip both rows with one command, which records the submission and sets the date
+the 7-day follow-up reminder counts from:
 
 ```bash
 python3 -m db.tools.review submitted --app 6 --method online_form \
@@ -236,9 +237,10 @@ python3 -m db.tools.review submitted --app 6 --method online_form \
 ```
 
 It moves both rows (`applications` to `applied` with `applied_at`, the posting
-to `applied`), refuses to record the same application twice so a re-run cannot
-restart the clock, and prints the `questions record --answer-given` line for
-anything that went out differently from the bank. Then distill: the general learning goes
+to `applied`), refuses to record the same application twice (a second `applied`
+event would move `applied_at` to today and push the reminder out another seven
+days), and prints the `questions record --answer-given` line for anything that
+went out differently from the bank. Then distill: the general learning goes
 to `MEMORY.md`, the ATS- or tooling-specific correction to `_docs/<ats>.md` or
 `_docs/tooling.md`.
 

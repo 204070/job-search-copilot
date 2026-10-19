@@ -58,7 +58,8 @@ far. ATS forms keep no server-side draft, so this is lost work, not a refresh.
 ## Reuse: recipes for now, a plugin only if filling becomes the bottleneck
 
 Decided 18/10/2026. Reuse belongs on the side we control, and that side already
-has it (`review submitted`, `review reply`, the `FOLLOW_UP_AFTER_DAYS` clock).
+has it (`review submitted`, `review reply`, the `FOLLOW_UP_AFTER_DAYS`
+follow-up reminder).
 The browser side stays case by case, because we do not control those forms.
 
 OpenCLI does have the extension point if that changes: `opencli plugin create

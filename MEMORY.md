@@ -235,8 +235,10 @@
   employer's own domain, real ad recovered, From address recorded, the ad's own
   subject-line instruction followed). Draft lives in
   `artifacts/applications/<date>-<company>-<role>.md`, application row
-  `method='email'`. The reply lands in the mailbox, so the day-7 chase clock
-  applies to the mailbox. Section in `_docs/team/application-specialist.md`.
+  `method='email'`. The reply lands in the mailbox, so the 7-day follow-up
+  reminder points at the mailbox: nothing reaches the database by itself, and
+  `review reply` is what records it. Section in
+  `_docs/team/application-specialist.md`.
 - **Emphasis is tailored; the FACTS are not (18/10).** Deliberately leading with
   PCI DSS for a regulated payments employer is not a commitment to lead with it
   on a dev-tools one, so the two belong in different stores: atomic facets and
@@ -307,17 +309,20 @@
   cannot be picked at any spelling. The field was optional, the resume carried
   the education, and saying so was better than substituting a school that is not
   theirs.
-- **Our own bookkeeping must never silence a reminder (18/10).** The day-7 chase
-  clock was suppressed by any `interview`, `offer`, `rejection`, `note` or
-  `follow_up` event, and two of those are OURS rather than theirs: a `note`
-  ("recon done", "form filled in one pass") and our own chase. The signature is
-  worth remembering, because it failed exactly where the work was best: the
-  better an application was documented, the more reliably its chase went quiet,
-  and a freshly submitted one read "no action (a reply is on record)" with
-  nobody having replied. One list now defines contact (`SIGNAL_EVENT_TYPES` in
+- **Our own bookkeeping must never silence a reminder (18/10).** The 7-day
+  follow-up reminder is derived, not stored: `applications.applied_at` plus a
+  contact check. That check counted any `interview`, `offer`, `rejection`,
+  `note` or `follow_up` event, and two of those are OURS rather than theirs: a
+  `note` ("recon done", "form filled in one pass") and our own follow-up. So
+  recording our own work cleared the reminder. The signature is worth
+  remembering, because it failed exactly where the work was best: the better an
+  application was documented, the more reliably the reminder disappeared, and a
+  freshly submitted one read "no action (a reply is on record)" with nobody
+  having replied. One list now defines contact (`SIGNAL_EVENT_TYPES` in
   `db/tools/review.py`), `reply` carries contact that moves no status, and
   `review reply` is the command that writes it, because an action with no
-  command is an action that never gets recorded.
+  command is an action that never gets recorded. The mechanism, stated
+  concretely: `_docs/jobs-db.md`, "The follow-up reminder".
 - **A salary figure belongs to the person and can move an order of magnitude at
   submit time (18/10).** The prepared form carried the bank's
   $180,000-$220,000; they replaced it with $35,000-$50,000 on their own reading
