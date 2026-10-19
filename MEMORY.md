@@ -318,9 +318,19 @@
   in the lower bands), and HiringCafe (browser-read, above). All four are
   listed in `db/seeds/boards.jsonc`; a fresh clone gets them from
   `python3 -m db.seed`.
-- **`opencli` must be on PATH for the scanner's X-bookmarks mode.** Under cron
-  it reports "not installed"; in-shell it works once
-  `~/.local/share/vite-plus/bin` is on PATH.
+- **`opencli` must be on PATH for the scanner's bridge modes (HiringCafe, X
+  Bookmarks).** Under cron it reported "not installed" for months: cron's PATH
+  is minimal, so the X-bookmark board was attempted daily and never ran.
+  `cron/daily_scan.sh` now exports `~/.local/share/vite-plus/bin` (opencli and
+  node live there; no interpreter, so prepending it changes nothing else). Off
+  cron, in-shell, that dir must be on PATH too.
+- **Two interpreters, and cron's is the one without JobSpy (19/10).** Cron runs
+  `/usr/bin/python3`; an interactive shell runs anaconda's python3, which is the
+  one with `jobspy` installed — so Indeed, LinkedIn and ZipRecruiter report
+  `No module named 'jobspy'` every night and are only ever scanned by hand.
+  Deliberately left alone for now (changing the interpreter is the user's call):
+  the cost is three enabled boards that never run under cron, and the fix is one
+  line in `cron/daily_scan.sh`.
 - Always check location + sponsorship before filling; archive early with `reason_for_archive` in job metadata.
 - Full semi-auto loop validated 17/10 (application #1, applied) and twice more
   on 18/10 through Ashby (applications #3 and #4, applied): the runbook in
