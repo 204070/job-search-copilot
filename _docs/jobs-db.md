@@ -164,6 +164,12 @@ Section 1 is the point of the format: it is computed against the `Refreshed:`
 line the file carried last time, so reading it "from time to time" costs one
 section instead of six, and the marker needs no table of its own.
 
+**A change to what a query RETURNS needs a run against a real database.** The
+pure selftest drives the helpers and never builds a digest from rows, so when a
+status event was compared against a column that was missing from one SELECT
+list, all 40 cases passed and the renderer raised `IndexError` on the first real
+row. `python3 -m db.tools.review` on the live database is the cheap proof.
+
 | Command | What it does |
 |---|---|
 | `python3 -m db.tools.review` | Rewrite `artifacts/review.md` and print what needs action |

@@ -167,6 +167,9 @@ page for that credential, queries the index itself and returns the rows.
   carries either no credentials or the public `(none)` ones, and the adapter
   throws saying which, so the run's `### Errors` section and `logs/leads/` name
   it instead of reporting "0 fetched". Sign in at workatastartup.com, rescan.
+- The filter narrows the fetch, never the store. Rows already stored keep their
+  status, so a narrower search deletes nothing, and `classify` still tags them
+  if they are read again.
 
 
 ## Region scope: can you actually take this job?
@@ -189,6 +192,41 @@ overlap and are NOT bars. Nothing is ever filtered out on this basis — the tag
 groups the board; the daily report sorts matches by scope first, so a role you
 can't take no longer buries one you can. `jobs.region_evidence` keeps the
 phrase that produced the tag.
+
+The word `Remote` means "not in an office". It does not say who may apply. Three
+employers whose own ATS field reads `Remote` narrowed it three ways: one stated
+"we're only open to candidates based in the US, EU and UK", one was really two
+countries in central Europe once its board was read, and one sat beside a third
+party's `USA Only` tag while its own board said nothing. Read the eligibility
+sentence, and prefer a field that carries a region (`Home based - Worldwide`,
+`Remote - Global`) over one that carries none. Expect a mostly US net: in the
+high-score band the well-known employers resolved to a US-only or a named short
+list.
+
+### Verify on the employer's own board
+
+An aggregator's row is not evidence of where a posting hires. Three of the six
+best-looking leads in one sitting carried an empty location and were gated in
+fact (USA/Canada, a single country, "you are based in the US"). Two others were
+genuinely worldwide, and both said so in a structured field the aggregator never
+carried (`Anywhere`, "based elsewhere, you'll be hired via our global employer
+partner").
+
+Ashby and Greenhouse publish a whole board as JSON, so the check costs one fetch
+and no browser session:
+
+```bash
+# Ashby (carries each posting's structured location)
+curl -s 'https://api.ashbyhq.com/posting-api/job-board/<slug>?includeCompensation=true'
+# Greenhouse (jobs + full advert text)
+curl -s 'https://boards-api.greenhouse.io/v1/boards/<slug>/jobs?content=true'
+```
+
+- Write the employer's own value into `jobs.location` and let `classify` derive
+  the tag. Keep the provenance in `jobs.metadata.employer_ad`.
+- The same read shows when the role held has been replaced by a different one.
+- When the check fails, archive the posting with `reason_for_archive` (the
+  runbook says how).
 
 ### Not every `region_gated` list excludes you
 
@@ -301,6 +339,20 @@ python3 -m scanner.tools.rescore            # re-derive match_score after the sc
   kind of role at all (`Matcher.admits()`, which reports use so their notion of
   "looks like a role" cannot drift from the scorer's), and whether the posting
   is open to where the person lives (`region_scope`, above).
+- **A score is not a decision, in either direction.** An advert can name the
+  stack in passing while its must-haves ask for experience the CV does not show,
+  and a posting outside the user's strongest languages can score low while its
+  gates are clear. Measured 19/10: two roles at one employer scored 88 and 17,
+  and the gates ran the other way (the 88 wanted a year of a language the user
+  does not have in production, plus Kubernetes beyond the basics with proof).
+  Read the must-haves on the employer's own board before trusting a high score
+  or dropping a low one.
+- **Anything the user names as a target belongs in this file, not in a chat
+  thread.** A family that is only mentioned in conversation never scores; the
+  engineering-manager family and the AI vocabulary were both added that way. A
+  wider gate buys volume, so check what it returns (`rescore --top 20`) before
+  trusting it: the added families came back mostly US-resident or gated, and the
+  eligible remainder asked for people-management experience.
 - **Classifier upgrade path**: replace the internals of
   `scanner/keywords.Matcher.score()` (or add `scanner/classifier.py` with the
   same contract) — nothing else changes.

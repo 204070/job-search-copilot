@@ -25,7 +25,12 @@ from, and what is ambiguous. Then they review and submit.
 5. Read `_docs/<ats>.md` for the posting's ATS and `_docs/tooling.md` for the
    browser bridge. Load the ATS doc fresh each time; its worked examples are
    one posting's adaptations, never defaults.
-6. Set the application row to `ready_to_apply` (`online_form`, resume variant
+6. Confirm eligibility on the employer's own board before you open the form.
+   Ashby and Greenhouse publish a board as JSON, so the check is one fetch, and
+   the aggregator's copy of the location is only a hint. When the check fails,
+   archive the posting with `reason_for_archive` and stop. Endpoints and rules:
+   `_docs/scanning.md`.
+7. Set the application row to `ready_to_apply` (`online_form`, resume variant
    noted) so an interrupted run is resumable from the DB, not from memory.
 
 ## Phase 1 — Open and survey
@@ -55,6 +60,9 @@ from, and what is ambiguous. Then they review and submit.
   over. The values are personal facts, so they stay in the private files and the
   DB; the committed docs and MEMORY say only that the block is filled from the
   profile, never what it contains.
+- **Fill the whole form in one pass, then hand it over at once.** An ATS form
+  keeps no server-side draft, so a part-filled form left between turns is lost
+  work. Survival conditions and guards: `_docs/tooling.md`.
 - If the tab is `about:blank` or the form is gone, reopen and refill from
   scratch — losing state is normal, not an emergency. Work only in your tab:
   never close, navigate, or disturb anything else in their browser.
@@ -93,6 +101,26 @@ Each form phrases its options differently. For every constrained question:
   consistent answers from the profile.
 - Exit criteria: no pick was made from memory of another posting's options.
   If you catch yourself thinking "this is usually X" — stop, read the list.
+
+## Answers in prose (any text field or textarea)
+
+This applies to every form and every draft, not only Ashby's. Worked cases:
+`_docs/ashby.md`.
+
+- Take the facts from `artifacts/profile.jsonc` and the attached CV. Read the
+  profile first, because the CV shows less than the user has done.
+- Ask for the real tech surface before writing an infrastructure or stack
+  answer. Drafting from `resume.pdf` alone once undersold the candidate badly.
+- Write concrete systems, not adjectives. Engineers read these.
+- Name the employer's own product when the user has run it, in the paragraph
+  where it belongs. Ask at intake which of their products the user knows,
+  because it will not be in the CV.
+- Do not pad. A weak public repository weakens a claim about contribution.
+- Do not claim a stack that an OR list names unless one true leg backs it. Stay
+  silent on the rest and write in the draft why.
+- Keep Go general: side projects and exploration, not production.
+- A fact about the user belongs in `profile.jsonc`. The wording sent to this
+  employer belongs in the question bank.
 
 ## Phase 5 — Attach the resume
 
@@ -221,8 +249,8 @@ mismatch, stale listing, etc.) **before or during fill**:
    explaining why (e.g., "US-only role; applicant in Nigeria; no sponsorship").
 2. If an application row exists, set it to `withdrawn` (not `applied`) with
    an `application_events` note.
-3. Distill the learning (ATS quirk, eligibility signal) to `MEMORY.md` or
-   `_docs/<ats>.md`.
+3. Record the learning where it belongs: the detail and the worked case in
+   `_docs/<ats>.md`, one short rule with a pointer in `MEMORY.md`.
 4. Do **not** fill further; the job is out of the pipeline.
 
 ## Job vs Application status flows
@@ -257,9 +285,9 @@ It moves both rows (`applications` to `applied` with `applied_at`, the posting
 to `applied`), refuses to record the same application twice (a second `applied`
 event would move `applied_at` to today and push the reminder out another seven
 days), and prints the `questions record --answer-given` line for anything that
-went out differently from the bank. Then distill: the general learning goes
-to `MEMORY.md`, the ATS- or tooling-specific correction to `_docs/<ats>.md` or
-`_docs/tooling.md`.
+went out differently from the bank. Then record the learning where it belongs:
+the detail and the worked case go to `_docs/<ats>.md` or `_docs/tooling.md`, and
+one short rule with a pointer goes to `MEMORY.md`.
 
 Facts and phrasings part company here. A **fact** about the user goes to
 `artifacts/profile.jsonc`, never into committed files, and it goes in atomic:
