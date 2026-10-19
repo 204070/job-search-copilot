@@ -12,8 +12,19 @@ against `scanner/keywords.jsonc`, and appends new matches to
 | `rss`     | `scanner/fetchers.fetch_rss`     | `feed_url`, or `feed_urls` for several | RSS 2.0, namespace-tolerant; repairs bare `&`/double-encoded entities; reads `content:encoded` when `description` is empty; recovers an employer embedded in the title (WWR, Himalayas, Real Work From Anywhere); a posting listed in two of a board's category feeds is stored once |
 | `api`     | `scanner/fetchers.fetch_api`     | `source` (`remotive`/`remoteok`/`mapped`), `endpoint` | public JSON APIs; `mapped` needs no code — see below |
 | `jobspy`  | `scanner/fetchers.fetch_jobspy`  | `source`, `search_term`, `location`, `results_wanted`, `hours_old` | needs `pip install python-jobspy` |
-| `html`    | `scanner/fetchers.fetch_html` (mode-dispatched) | `mode` (+ mode keys: `pages` for the list parsers; `profile_dir`, `scrolls`, `cap` for `x_bookmarks`; `url`, `profile`, `session`, `js_file`, `tries`, `wait_ms` for `opencli_eval`) | browser-scraped and server-rendered boards; unknown `mode` = "not scanned yet" |
-| `manual`  | never auto-scanned | — | e.g. saved Google searches |
+| `html`    | `scanner/fetchers.fetch_html` (mode-dispatched) | `mode` (+ mode keys: `pages`, `details`, `delay_ms` for the list parsers; `profile_dir`, `scrolls`, `cap` for `x_bookmarks`; `url`, `profile`, `session`, `js_file`, `tries`, `wait_ms` for `opencli_eval`; `on_demand` for any of them) | browser-scraped and server-rendered boards; unknown `mode` = "not scanned yet" |
+| `manual`  | never auto-scanned | — | e.g. saved Google searches, dead boards |
+
+Two config keys cut work out of a run without changing what a board is:
+
+- **`on_demand`** keeps a board out of a full run (`python3 -m scanner`): it
+  scans only when named, `python3 -m scanner --board NAME`. X Bookmarks is set
+  this way, because it reads your own logged-in Chrome and you want to decide
+  when that happens. The run report names it and says so rather than staying
+  silent. (`scan_strategy: manual` is the stronger form: never scanned at all,
+  even when named, which is right for a board with nothing to fetch.)
+- **`details`** asks for one extra request per *new* posting, described under
+  [Server-rendered list boards](#server-rendered-list-boards-jsgurujobs-javascript_jobs).
 
 The `html` modes, cheapest first:
 
@@ -43,10 +54,10 @@ branch in `fetch_api` only when a board needs real logic.
 
 Active sources: WWR (three category feeds: programming, full-stack, devops),
 Himalayas (RSS), Real Work From Anywhere (RSS), Jobspresso (dev-category RSS),
-JS Guru Jobs and JavaScript Jobs (server-rendered HTML lists), Jobicy (mapped
-API), Remotive + RemoteOK (APIs), Indeed/LinkedIn/ZipRecruiter (JobSpy),
-HiringCafe (browser-read search, needs Chrome), X Bookmarks (OpenCLI/Playwright,
-your own session). ZipRecruiter currently returns 403 from this network;
+JS Guru Jobs and JavaScript Jobs (server-rendered HTML lists, with the posting's
+own page read for new rows), Jobicy (mapped API), Remotive + RemoteOK (APIs),
+Indeed/LinkedIn/ZipRecruiter (JobSpy), HiringCafe (browser-read search, needs
+Chrome), X Bookmarks (OpenCLI/Playwright, your own session — `on_demand`). ZipRecruiter currently returns 403 from this network;
 LinkedIn rate-limits. 6 `html` boards stay pending — reconnaissance status for
 each lives in `boards.notes` (migration 0009); paywalled/dormant boards
 (Remote4Africa, RemoteAfrica, Crossover) are `manual`, Cleverjobs is disabled.
@@ -67,10 +78,28 @@ Two rules those parsers follow, because both boards mix the two ideas:
   Worldwide`, and the posting's own text says "100% remote | Global team": the
   badge is what the region classifier must read, so a Worldwide badge becomes
   `jobs.location` and the raw place stays in `metadata.employer_location`.
-- **Only what the card states is stored.** Descriptions live on the detail
-  page, which would cost one request per posting, so these two boards score on
-  the title alone (their rows sit in the lower score bands accordingly). Add a
-  detail fetch when the boards start producing leads worth it.
+- **The card is stored first, the advert second.** These boards keep the
+  description on the posting's own page, so `details: true` reads it, one
+  request per posting (`delay_ms`, default 250, spaces them out) — but only for
+  postings the store holds no text for. On a normal run that is the handful of
+  postings new since last time; a posting already stored with text is skipped,
+  and a page that failed is left without text, which is exactly what asks for
+  it again next run. Measured on 19/10: first fill of both boards 244 s (66
+  postings, javascript.jobs taking most of it at ~2.7 s a page), then 5 s and
+  4 s per run.
+
+A row stored before it had text adopts the advert through `upsert_job`'s one
+exception (see [Dedupe](#dedupe)), and the score comes with it, so nothing has
+to be repaired by hand afterwards. The date on the detail page replaces the
+card's relative age ("20 hours ago"), which is why `posted_at` on these rows is
+an exact day.
+
+javascript.jobs serves a `JobPosting` JSON-LD block on its posting pages, but
+not always valid JSON: members run together with no comma, strings carry raw
+newlines, the last member is followed by a trailing comma. About one posting in
+ten failed a document parse over damage in an unrelated member, so the fields
+are matched one by one and unescaped individually (`_ld_string`) — the parser's
+selftest feeds it the broken shape on purpose.
 
 ## HiringCafe (`mode: opencli_eval`)
 
@@ -88,8 +117,8 @@ rows, or `null` while the page is still loading (that `null` is what makes the
 fetcher retry instead of accepting an empty page). Mechanism and command
 shapes: `_docs/tooling.md`.
 
-- Needs Chrome open, so under cron it reports the bridge error on days it is
-  not — like X Bookmarks, and other boards are unaffected.
+- Needs Chrome open; the run reports the bridge error on days it is not (like
+  X Bookmarks, and other boards are unaffected).
 - Rows carry the employer's own posting URL, so dedupe lands on the real ad
   (a row already stored from another board counts as "already known").
 - The search is yours, verbatim, in `scan_config.url`: query `software`,
@@ -158,9 +187,10 @@ time would never refresh. `python3 -m scanner` runs it at the end of every scan.
 
 ## Repairs for rows a re-scan cannot fix
 
-`upsert_job` only refreshes `last_seen_at` for a job it already has, so an
-improved extractor never reaches rows stored earlier. Three idempotent tools
-re-derive those in place:
+`upsert_job` refreshes `last_seen_at` for a job it already has, and adds a
+description it never had (with the score that description earns) — nothing else.
+So an improved extractor never reaches rows stored earlier, and three idempotent
+tools re-derive those in place:
 
 ```bash
 python3 -m scanner.tools.enrich_bookmarks   # pull company/location/role out of bookmarked tweets
@@ -173,7 +203,12 @@ python3 -m scanner.tools.rescore            # re-derive match_score after the sc
 - `ux_jobs_url` (global, on `lower(url)`): the same posting URL = one job,
   even when two boards link to the same ATS page.
 - `ux_jobs_board_source_ref`: a board's own id/guid is stored once per board.
-- Re-discovered jobs only get `last_seen_at` refreshed, never duplicated.
+- Re-discovered jobs are never duplicated, and only get `last_seen_at`
+  refreshed — plus, when they were stored without a description and this scan
+  has one, that text and the score it earns. Text already stored is never
+  replaced. That exception is what lets a board whose advert lives on the
+  posting's own page (see above) fill a row in on a later run; the rule has its
+  own selftest, `python3 -m scanner.store`.
 - Known limit: identical roles at the same company posted to two boards with
   *different* URLs (e.g. "Copy of ..." on Indeed) can appear twice.
 
@@ -205,11 +240,11 @@ python3 -m scanner.tools.rescore            # re-derive match_score after the sc
   term to the list cannot lower everybody else's score. Without `core_weight`
   the target is the total weight, which is the older and dilution-prone shape.
 - `MATCH_MIN_SCORE` env (default 15) is the lead threshold.
-- A stored `match_score` is written at insert time and never refreshed by a
-  later scan (`upsert_job` only touches `last_seen_at`), so after editing the
-  config run `python3 -m scanner.tools.rescore` — `--dry-run` first, `--top 20`
-  to see what the new ranking actually puts first, `--only-below 15` for a cheap
-  pass over the low end.
+- A stored `match_score` is written at insert time and refreshed only when the
+  row gains a description it never had; a later scan of an unchanged row does
+  not rescore it. So after editing the config run `python3 -m scanner.tools.rescore`
+  — `--dry-run` first, `--top 20` to see what the new ranking actually puts
+  first, `--only-below 15` for a cheap pass over the low end.
 - A score answers "how much of the stack does this advert name", nothing else.
   Two neighbouring questions have their own tools: whether the title is this
   kind of role at all (`Matcher.admits()`, which reports use so their notion of
@@ -221,16 +256,21 @@ python3 -m scanner.tools.rescore            # re-derive match_score after the sc
 
 ## Cron
 
-`./cron/install.sh` — idempotent; installs `30 6 * * * .../daily_scan.sh`,
-backs up the previous crontab first. Logs append to `logs/scan.log`; per-day
-reports land in `logs/leads/`.
+**The schedule is off (19/10).** Runs are hand-triggered:
 
-Manual runs:
-
-    python3 -m scanner                  # all enabled non-manual boards
+    python3 -m scanner                  # all enabled boards except on-demand ones
     python3 -m scanner --board RemoteOK # one board
     python3 -m scanner --dry-run        # fetch + report, no writes
     python3 -m scanner --min-score 25   # stricter lead threshold
+
+To put the daily 06:30 run back: `./cron/install.sh` (idempotent — it replaces
+the line it manages and backs up the crontab first). `./cron/install.sh
+--remove` takes it back out; that is what turned it off. Installed, it logs to
+`logs/scan.log` and per-day reports land in `logs/leads/` either way. If it is
+re-installed: cron's `PATH` is minimal, so `daily_scan.sh` exports the OpenCLI
+bin directory itself, and Cron's `python3` is `/usr/bin/python3`, which is not
+the interpreter that has `jobspy` (`jobspy` boards report
+`No module named 'jobspy'` from cron while working from a shell).
 
 ## X bookmarks
 
@@ -245,10 +285,10 @@ has no bookmark read below Pro tier, and v1.1 — which had
   Bridge extension from its GitHub releases into Chrome (Developer mode →
   Load unpacked), log into X in that Chrome. `opencli doctor` diagnoses the
   whole chain (daemon / extension / connectivity).
-- This board is **manual-first**: keep Chrome open and run
-  `python3 -m scanner --board 'X Bookmarks'` when you want to pull. Under
-  cron it reports "bridge not connected" on days Chrome is closed — other
-  boards are unaffected.
+- This board is **on demand** (`scan_config.on_demand`): a full
+  `python3 -m scanner` reports it and skips it, and it scans only when named —
+  `python3 -m scanner --board 'X Bookmarks'`. So Chrome-open timing is yours to
+  choose, and a run with Chrome closed is not an error on the other boards.
 - Several Chrome profiles connected? Pin the X-logged-in one in
   `scan_config.profile` (ids from `opencli profile list`).
 - Every bookmark is stored (a tweet with no external link keeps the tweet
@@ -290,7 +330,10 @@ has no bookmark read below Pro tier, and v1.1 — which had
    - a JSON API: add a branch in `fetch_api`, or just `fields` for `mapped`;
    - a server-rendered listing page: add a parser to `scanner/html_boards.py`
      and register it in `LIST_MODES`, with selftest cases cut from the real
-     card (`python3 -m scanner.html_boards` runs them);
+     card (`python3 -m scanner.html_boards` runs them). If the card carries no
+     advert, add a `parse_*_detail` and register it in `DETAIL_MODES`, then set
+     `details: true` on the board — the fetcher then reads the posting page for
+     postings whose text the store does not have yet, and nothing else;
    - a page only a browser can reach: add a site adapter under `scanner/js/`
      and point `scan_config.js_file` at it (`mode: opencli_eval`).
 4. Scan it alone first: `python3 -m scanner --board NAME --dry-run`, then

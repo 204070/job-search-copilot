@@ -4,10 +4,14 @@ Dedupe relies on the two unique indexes:
   - ux_jobs_url:           the same posting URL is the same job, globally
   - ux_jobs_board_source_ref: a board's own id/guid, per board.
 
-A re-discovered job gets its last_seen_at refreshed instead of a new row. That
-is why `classify_stored_jobs` exists as a separate pass: an existing row keeps
-its original text, so a tag derived at insert time would freeze. Re-deriving
-over the stored rows keeps `region_scope` current as the classifier improves.
+A re-discovered job gets its last_seen_at refreshed instead of a new row, and
+keeps the text and score it was stored with. The one addition it accepts is a
+description it never had, which is how a board that states the advert on the
+posting's own page (rather than on the card the scan reads first) ends up with
+one; the score that description earns is written with it. That is also why
+`classify_stored_jobs` exists as a separate pass: an existing row keeps its
+original text, so a tag derived at insert time would freeze. Re-deriving over
+the stored rows keeps `region_scope` current as the classifier improves.
 """
 from __future__ import annotations
 
@@ -36,20 +40,34 @@ def upsert_job(conn: sqlite3.Connection, board_id: int, job: dict) -> tuple[str,
     existing = None
     if job.get("url"):
         existing = conn.execute(
-            "SELECT id FROM jobs WHERE lower(url) = lower(?)", (job["url"],)
+            "SELECT id, raw_text FROM jobs WHERE lower(url) = lower(?)", (job["url"],)
         ).fetchone()
     if existing is None and job.get("source_ref"):
         existing = conn.execute(
-            "SELECT id FROM jobs WHERE board_id = ? AND source_ref = ?",
+            "SELECT id, raw_text FROM jobs WHERE board_id = ? AND source_ref = ?",
             (board_id, job["source_ref"]),
         ).fetchone()
 
     if existing is not None:
-        conn.execute(
-            "UPDATE jobs SET last_seen_at = ?, "
-            "bookmarked_at = COALESCE(bookmarked_at, ?) WHERE id = ?",
-            (ts, ts if bookmarked else None, existing["id"]),
-        )
+        text = (job.get("description") or "").strip()
+        if text and not (existing["raw_text"] or "").strip():
+            # The one thing a re-discovered row accepts: a description it never
+            # had, plus the score that description earns. Boards that keep the
+            # advert on the posting's own page store the card first and the text
+            # on a later run, so without this the text would be fetched on every
+            # run and thrown away. Text already stored is never replaced.
+            conn.execute(
+                "UPDATE jobs SET last_seen_at = ?, raw_text = ?, match_score = ?, "
+                "bookmarked_at = COALESCE(bookmarked_at, ?) WHERE id = ?",
+                (ts, text, job.get("match_score", 0),
+                 ts if bookmarked else None, existing["id"]),
+            )
+        else:
+            conn.execute(
+                "UPDATE jobs SET last_seen_at = ?, "
+                "bookmarked_at = COALESCE(bookmarked_at, ?) WHERE id = ?",
+                (ts, ts if bookmarked else None, existing["id"]),
+            )
         return "seen", existing["id"]
 
     try:
@@ -203,3 +221,71 @@ def rescore_stored_jobs(
     if not dry_run:
         conn.commit()
     return counts, changed
+
+
+def _self_test() -> int:
+    """`python3 -m scanner.store` — what a re-discovered row is allowed to change.
+
+    On a throwaway database, because the rule under test is what `upsert_job`
+    writes to a row it already holds. The HTML list boards depend on it: they
+    store the card first and read the posting's own page for the advert on a
+    later run, and that text only reaches the row through this path.
+    """
+    import tempfile
+    from pathlib import Path
+
+    from db import connect
+    from db.migrate import run_migrations
+
+    path = Path(tempfile.mkdtemp()) / "store-selftest.db"
+    run_migrations(db_path=path)
+    conn = connect(path)
+    board = conn.execute(
+        "INSERT INTO boards (name, kind, scan_strategy, enabled) "
+        "VALUES ('Selftest', 'job_board', 'rss', 1)"
+    ).lastrowid
+    total = failures = 0
+
+    def check(label: str, got, want) -> None:
+        nonlocal total, failures
+        total += 1
+        ok = got == want
+        failures += not ok
+        print(f"{'ok  ' if ok else 'FAIL'} {label}: {got!r}" + ("" if ok else f"  (want {want!r})"))
+
+    def stored(job_id: int) -> tuple:
+        row = conn.execute(
+            "SELECT raw_text, match_score FROM jobs WHERE id = ?", (job_id,)
+        ).fetchone()
+        return row["raw_text"], row["match_score"]
+
+    card = {"title": "Senior Engineer", "company": "Northwind",
+            "url": "https://example.invalid/1", "description": None,
+            "match_score": 20, "posted_at": "2026-10-19"}
+
+    status, job_id = upsert_job(conn, board, card)
+    check("a card-only posting is stored without text", (status, stored(job_id)),
+          ("new", (None, 20)))
+
+    status, _ = upsert_job(conn, board, {**card, "description": "TypeScript and React.",
+                                         "match_score": 88})
+    check("the advert arrives later: adopted with its score",
+          (status, stored(job_id)), ("seen", ("TypeScript and React.", 88)))
+
+    status, _ = upsert_job(conn, board, {**card, "description": "A different advert.",
+                                         "match_score": 5})
+    check("  text already held is never replaced", stored(job_id),
+          ("TypeScript and React.", 88))
+
+    _, textless = upsert_job(conn, board, {**card, "url": "https://example.invalid/2"})
+    status, _ = upsert_job(conn, board, {**card, "url": "https://example.invalid/2",
+                                         "match_score": 30})
+    check("  a posting that still has no text keeps its score",
+          (status, stored(textless)), ("seen", (None, 20)))
+
+    print(f"\n{total - failures}/{total} cases pass")
+    return 1 if failures else 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(_self_test())

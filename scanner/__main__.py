@@ -67,16 +67,34 @@ def main(argv: list[str] | None = None) -> int:
     new_total = seen_total = 0
     errors: list[str] = []
 
+    # Postings the store already holds text for. A board whose assurance of a
+    # description is its posting's own page (the HTML list boards) is told this
+    # so it only pays that request where the text is missing, instead of
+    # re-reading every posting on every run.
+    described = {
+        (row["url"] or "").lower()
+        for row in conn.execute(
+            "SELECT url FROM jobs WHERE url IS NOT NULL "
+            "AND raw_text IS NOT NULL AND trim(raw_text) <> ''"
+        )
+    }
+
     for board in boards:
         name, strategy = board["name"], board["scan_strategy"]
-        mode = json.loads(board["scan_config"] or "{}").get("mode")
+        cfg = json.loads(board["scan_config"] or "{}")
+        mode = cfg.get("mode")
         if strategy == "manual" or (
             strategy == "html" and mode not in fetchers.KNOWN_HTML_MODES
         ):
             lines.append(f"- {name}: strategy `{strategy}` — not scanned yet")
             continue
+        if cfg.get("on_demand") and not args.board:
+            # Runs when asked for, never on a scheduled or full run: this board
+            # needs a browser the user is driving, or costs more than it is worth.
+            lines.append(f"- {name}: on demand only — `--board {name}` to scan it")
+            continue
         try:
-            jobs = fetchers.fetch(board)
+            jobs = fetchers.fetch(board, described)
         except Exception as exc:  # noqa: BLE001 - one bad board must not stop the run
             errors.append(f"{name}: {exc}")
             lines.append(f"- {name}: ERROR {exc}")

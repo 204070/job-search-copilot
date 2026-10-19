@@ -84,6 +84,33 @@
 
 ## Learnings (conversion, content, what works)
 
+- **A detail page is worth one request per posting, but only where the store
+  has no text (19/10).** The two server-rendered boards keep the advert on the
+  posting's own page, so `details: true` reads it. The first version read it for
+  every posting on every run: 66 pages, 2:04 of the run spent on the slower host
+  alone, and the same again next time. One predicate fixed it — read the page
+  when the store holds no text for that URL — and that gave three things at
+  once: first fill 244 s, then 5 s and 4 s a run; a page whose fetch failed
+  stays textless, which is exactly what asks for it again (self-healing, no
+  repair tool); and a posting new today is described on the run that finds it.
+  It also exposed the bug that had made the cost permanent: `upsert_job` had no
+  way to write a description into a row it already held, so a run could fetch 30
+  adverts and store none of them, and the next run fetched them again. Two
+  rules: **a board's `details` spends its request on new postings only**, and
+  **the steady state is measured, not assumed** — running the same board twice
+  (44 s, then 5 s) is what showed the first version was not converging; reading
+  the code had made it look like it would.
+- **One posting page in ten ships JSON-LD that is not JSON (19/10).** The
+  publisher's `JobPosting` block runs members together with no comma between
+  them, carries raw newlines inside strings, and closes with a trailing comma.
+  A strict parse failed on 3 of 36 postings, and every repair that kept the
+  document in one piece (strip trailing commas, `strict=False`) still lost those
+  three, because the damage sat in an unrelated member. Reading each field on
+  its own — match the quoted value, unescape it as the JSON string it is —
+  recovered all 36 and stopped being a JSON parser at all. Same instinct as the
+  feed XML repair: tolerate what the publisher actually emits, and keep the
+  selftest fed the broken shape so a later "simplification" cannot quietly
+  reintroduce the failure.
 - **A board's badge is the eligibility; its place field is the employer's
   location (19/10).** JS Guru Jobs prints `Location: Armenia` beside
   `Work Format: Remote / Worldwide` for a posting whose own text says "100%
@@ -292,10 +319,12 @@
   but the tag itself still comes from stored text: check the employer's own page
   before treating such a row as open, exactly as with the structured Ashby
   Location field. Two occurrences now, so treat a board copy as a hint by default.
-- **`upsert_job` refreshes only `last_seen_at`** for a job it already has, so
-  any improvement to an extractor reaches nothing stored earlier. Derivation
-  must be a re-runnable pass: `classify` (region), `enrich_companies` (RSS
-  title), `enrich_bookmarks` (tweets).
+- **`upsert_job` refreshes only `last_seen_at`** for a job it already has (plus
+  a description it never had and the score that earns, which is how the
+  detail-page boards land their adverts), so any other improvement to an
+  extractor reaches nothing stored earlier. Derivation must be a re-runnable
+  pass: `classify` (region), `enrich_companies` (RSS title), `enrich_bookmarks`
+  (tweets).
 - **Feeds hide the employer in the title.** Real Work From Anywhere ("Role at
   Acme") and WWR ("acme: Role") shipped 152 rows as `Unknown`; 113 recovered
   named employers. `Unknown` rows are invisible to any by-company lookup, so
@@ -314,23 +343,28 @@
 - **Sources added 19/10, cheapest path first:** WWR's full-stack and
   devops/sysadmin categories (now three feeds under one board row, 95 items
   deduped from 116), JS Guru Jobs and JavaScript Jobs (server-rendered lists,
-  no feed and no JSON, parsed by pattern; title-only scoring, so their rows sit
-  in the lower bands), and HiringCafe (browser-read, above). All four are
+  no feed and no JSON, parsed by pattern; the posting's own page is read for
+  rows the store has no text for, so they score on the advert: best rows 99,
+  previously title-only), and HiringCafe (browser-read, above). All four are
   listed in `db/seeds/boards.jsonc`; a fresh clone gets them from
   `python3 -m db.seed`.
 - **`opencli` must be on PATH for the scanner's bridge modes (HiringCafe, X
   Bookmarks).** Under cron it reported "not installed" for months: cron's PATH
   is minimal, so the X-bookmark board was attempted daily and never ran.
-  `cron/daily_scan.sh` now exports `~/.local/share/vite-plus/bin` (opencli and
-  node live there; no interpreter, so prepending it changes nothing else). Off
-  cron, in-shell, that dir must be on PATH too.
-- **Two interpreters, and cron's is the one without JobSpy (19/10).** Cron runs
+  `cron/daily_scan.sh` exports `~/.local/share/vite-plus/bin` (opencli and node
+  live there; no interpreter, so prepending it changes nothing else). Off cron,
+  in-shell, that dir must be on PATH too. **The schedule itself is off (19/10):**
+  runs are hand-triggered (`python3 -m scanner`), and X Bookmarks carries
+  `on_demand` so a full run reports it and skips it — `--board 'X Bookmarks'` is
+  how it runs, when Chrome is open and the user says so. `./cron/install.sh`
+  puts the 06:30 line back; `--remove` takes it out.
+- **Two interpreters, and cron's was the one without JobSpy (19/10).** Cron ran
   `/usr/bin/python3`; an interactive shell runs anaconda's python3, which is the
-  one with `jobspy` installed — so Indeed, LinkedIn and ZipRecruiter report
-  `No module named 'jobspy'` every night and are only ever scanned by hand.
-  Deliberately left alone for now (changing the interpreter is the user's call):
-  the cost is three enabled boards that never run under cron, and the fix is one
-  line in `cron/daily_scan.sh`.
+  one with `jobspy` installed — so Indeed, LinkedIn and ZipRecruiter reported
+  `No module named 'jobspy'` every night and were only ever scanned by hand.
+  With the schedule off this surfaces only if cron is re-installed; in-shell
+  runs have JobSpy. Deliberately left alone (changing the interpreter is the
+  user's call), and the fix is one line in `cron/daily_scan.sh`.
 - Always check location + sponsorship before filling; archive early with `reason_for_archive` in job metadata.
 - Full semi-auto loop validated 17/10 (application #1, applied) and twice more
   on 18/10 through Ashby (applications #3 and #4, applied): the runbook in

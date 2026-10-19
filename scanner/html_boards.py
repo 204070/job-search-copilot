@@ -15,15 +15,16 @@ apply to all of them:
 - The card's *place* span is the employer's location; its *eligibility*
   wording (a "Worldwide" badge) is what the classifier must read, so that is
   what becomes `location`. The raw place is kept in metadata.
-- Only what the card states is stored. Descriptions live on the detail page,
-  which would mean one request per posting, so they are deliberately left
-  empty and these boards score on the title.
+- The card alone is stored by default: a description lives on the detail page,
+  which costs one request per posting, so `parse_*_detail` is deliberately
+  separate and the fetcher only calls it when the board asks (`details`).
 """
 from __future__ import annotations
 
 import html
+import json
 import re
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 # --- shared helpers ---------------------------------------------------------
 
@@ -59,6 +60,35 @@ def _chunks(body: str, item_pattern: re.Pattern) -> list[str]:
     """Split a listing page into per-card slices at each item match."""
     spans = [m.start() for m in item_pattern.finditer(body)]
     return [body[start:end] for start, end in zip(spans, spans[1:] + [len(body)])]
+
+
+_ABSOLUTE_DATE = re.compile(r"([A-Z][a-z]+ \d{1,2}, \d{4})")
+
+
+def _absolute_date(text: str | None) -> str | None:
+    """'October 18, 2026' (a detail page's Posted field) -> ISO date."""
+    match = _ABSOLUTE_DATE.search(text or "")
+    if not match:
+        return None
+    try:
+        return datetime.strptime(match.group(1), "%B %d, %Y").date().isoformat()
+    except ValueError:
+        return None
+
+
+def _inner_div(body: str, start: int) -> str:
+    """Inner HTML of the `<div>` that starts at `start`.
+
+    A regex cannot match nesting and the description is nested, so this counts
+    `<div`/`</div>` from the opening tag to the one that closes it.
+    """
+    inner_start = body.find(">", start) + 1  # past the opening tag's attributes
+    depth = 0
+    for match in re.finditer(r"</?div\b", body[start:]):
+        depth += 1 if match.group(0) == "<div" else -1
+        if depth == 0:
+            return body[inner_start: start + match.start()]
+    return body[inner_start:]
 
 
 # --- jsgurujobs.com ---------------------------------------------------------
@@ -159,6 +189,92 @@ def parse_javascript_jobs(body: str, today: date | None = None) -> list[dict]:
 LIST_MODES = {
     "jsgurujobs": parse_jsgurujobs,
     "javascript_jobs": parse_javascript_jobs,
+}
+
+
+# --- detail pages -----------------------------------------------------------
+#
+# Called only when a board sets scan_config `details`, because each one costs a
+# request. Both return a partial row: whatever the detail page knows that the
+# card did not (the fetcher decides what to overwrite and what to fill in).
+
+_JD_PROSE = re.compile(r'<div class="[^"]*prose prose-sm[^"]*">')
+_JD_POSTED = re.compile(r">Posted</dt>\s*<dd[^>]*>([^<]+)</dd>")
+_LD_JSON = re.compile(
+    r'<script[^>]+type="application/ld\+json"[^>]*>(.*?)</script>', re.S | re.I
+)
+
+
+def parse_jsgurujobs_detail(body: str) -> dict:
+    """A jsgurujobs posting page: the description, and the date the card hides.
+
+    The listing shows an age ("20 hours ago") while this page prints "Posted:
+    October 18, 2026", which is worth the request on its own.
+    """
+    prose = _JD_PROSE.search(body)
+    posted = _JD_POSTED.search(body)
+    return {
+        "description": _text(_inner_div(body, prose.start())) if prose else None,
+        "posted_at": _absolute_date(posted.group(1)) if posted else None,
+    }
+
+
+def parse_javascript_jobs_detail(body: str) -> dict:
+    """The fields a javascript.jobs posting page states in its JSON-LD block.
+
+    Read field by field rather than parsed as a document, because this
+    publisher's JSON-LD is malformed often enough to matter: members run
+    together with no comma, strings carry raw newlines, and the last member is
+    followed by a trailing comma. A strict parse loses the whole advert over
+    damage that sits in another member (roughly one posting in ten when this
+    was written), so each field is matched on its own and unescaped as the JSON
+    string it is. The alternative is scoring those postings on the title alone.
+    """
+    match = _LD_JSON.search(body)
+    if not match:
+        return {}
+    block = match.group(1)
+    low, high = (_ld_number(block, "minValue") or None,
+                 _ld_number(block, "maxValue") or None)  # 0 = the page states none
+    detail = {
+        "description": _text(_ld_string(block, "description")),
+        "posted_at": (_ld_string(block, "datePosted") or "")[:10] or None,
+        "employment_type": _ld_string(block, "employmentType"),
+        "location": _text(", ".join(
+            part for part in (_ld_string(block, "addressRegion"),
+                              _ld_string(block, "addressCountry")) if part
+        )) or None,
+    }
+    if low or high:
+        detail |= {"salary_min": low, "salary_max": high,
+                   "salary_currency": _ld_string(block, "currency")}
+    return detail
+
+
+def _ld_string(block: str, field: str) -> str | None:
+    """One string member of the JSON-LD block, unescaped, or None.
+
+    The match never spans a `\\` escape, so the captured token is always a
+    well-formed JSON string even when the document around it is not.
+    """
+    match = re.search(r'"%s"\s*:\s*"((?:[^"\\]|\\.)*)"' % field, block)
+    if not match:
+        return None
+    try:
+        return json.loads(f'"{match.group(1)}"', strict=False)  # raw newlines
+    except ValueError:
+        return None
+
+
+def _ld_number(block: str, field: str) -> float | None:
+    """One numeric member of the JSON-LD block, or None."""
+    match = re.search(r'"%s"\s*:\s*(-?\d+(?:\.\d+)?)' % field, block)
+    return float(match.group(1)) if match else None
+
+
+DETAIL_MODES = {
+    "jsgurujobs": parse_jsgurujobs_detail,
+    "javascript_jobs": parse_javascript_jobs_detail,
 }
 
 
@@ -267,6 +383,48 @@ _JS_CARD = """
 """
 
 
+_JG_DETAIL = """
+                    <dl class="mt-5 grid grid-cols-1 gap-x-4 gap-y-6 sm:grid-cols-3">
+                        <div class="sm:col-span-1">
+                            <dt class="text-sm font-medium text-gray-500">Posted</dt>
+                            <dd class="mt-1 text-sm text-gray-900">October 18, 2026</dd>
+                        </div>
+                    </dl>
+                    <div class="bg-white shadow-none overflow-hidden">
+                        <div class="px-4 py-5 sm:px-6">
+                            <h3 class="text-lg font-medium text-gray-900">Job Description</h3>
+                        </div>
+                        <div class="border-t border-gray-200 px-4 py-5 sm:p-0">
+                            <div class="px-4 py-5 sm:p-6 prose prose-sm max-w-none min-w-0 overflow-x-auto">
+                                <h3>About the role</h3>
+                                <p>Build things with <strong>TypeScript</strong>.</p>
+                                <div class="nested"><p>Nested, so the depth count matters.</p></div>
+                            </div>
+                        </div>
+                    </div>
+                    <p class="page-chrome">Get hot jobs first on Telegram</p>
+"""
+
+_JS_DETAIL = """
+<script type="application/ld+json">
+{
+    "@context" : "https://schema.org/",
+    "@type" : "JobPosting",
+    "title" : "Senior Front-end Developer",
+    "description" : "<div><p>React and
+    TypeScript, in a very long advert.</p></div>",
+    "datePosted" : "2026-10-11 00:44:21"
+    "employmentType" : "FULL_TIME",
+    "jobLocation" : { "@type" : "Place", "address" : { "@type" : "PostalAddress",
+        "addressRegion" : "New South Wales", "addressCountry" : "Australia" } },
+    "baseSalary" : { "@type" : "MonetaryAmount", "currency": "USD",
+        "value": { "@type": "QuantitativeValue", "minValue": 0, "maxValue": 0,
+                   "unitText": "YEAR" } },
+}
+</script>
+"""
+
+
 def _self_test() -> int:
     total = failures = 0
     fixed = date(2026, 10, 19)
@@ -302,6 +460,20 @@ def _self_test() -> int:
     check("  second company", js[1]["company"], "Acme")
     check("  age 3D", js[1]["posted_at"], "2026-10-16")
     check("  no job-type badge on 2nd card", js[1]["metadata"]["job_type"], None)
+
+    jd = parse_jsgurujobs_detail(_JG_DETAIL)
+    check("jsgurujobs detail: description", jd["description"],
+          "About the role Build things with TypeScript . Nested, so the depth count matters.")
+    check("  absolute posted date (not the card's age)", jd["posted_at"], "2026-10-18")
+    check("  the description stops at its own div", "page-chrome" in (jd["description"] or ""), False)
+
+    jd2 = parse_javascript_jobs_detail(_JS_DETAIL)
+    check("javascript.jobs detail: advert despite broken JSON-LD", jd2["description"],
+          "React and TypeScript, in a very long advert.")
+    check("  datePosted", jd2["posted_at"], "2026-10-11")
+    check("  employmentType", jd2["employment_type"], "FULL_TIME")
+    check("  jobLocation -> region, country", jd2["location"], "New South Wales, Australia")
+    check("  salary 0/0 is unstated, not zero", "salary_min" in jd2, False)
 
     print(f"\n{total - failures}/{total} cases pass")
     return 1 if failures else 0

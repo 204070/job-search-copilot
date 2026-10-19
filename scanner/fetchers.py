@@ -12,6 +12,8 @@ import html
 import json
 import math
 import re
+import sys
+import time
 import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
@@ -219,14 +221,14 @@ KNOWN_HTML_MODES = {
 }
 
 
-def fetch_html(board: dict, cfg: dict) -> list[dict]:
+def fetch_html(board: dict, cfg: dict, described: set[str] | None = None) -> list[dict]:
     mode = cfg.get("mode")
     if mode == "x_bookmarks":
         return fetch_x_bookmarks(board, cfg)
     if mode == "x_bookmarks_cli":
         return fetch_x_bookmarks_cli(board, cfg)
     if mode in html_boards.LIST_MODES:
-        return fetch_html_list(board, cfg)
+        return fetch_html_list(board, cfg, described)
     if mode == "opencli_eval":
         return fetch_opencli_eval(board, cfg)
     raise ValueError(f"no parser for html mode {mode!r}")
@@ -270,11 +272,19 @@ def _normalise_rows(items, via: str) -> list[dict]:
     return jobs
 
 
-def fetch_html_list(board: dict, cfg: dict) -> list[dict]:
+def fetch_html_list(
+    board: dict, cfg: dict, described: set[str] | None = None
+) -> list[dict]:
     """A server-rendered listing page, parsed by scanner.html_boards.
 
     scan_config keys: `mode` picks the parser, `pages` (default 1) how many
-    listing pages to walk, `url` overrides the board's own url.
+    listing pages to walk, `url` overrides the board's own url, `details` asks
+    for each posting's detail page (see `_add_details`), `delay_ms` paces those
+    requests.
+
+    `described` is the set of lowercased URLs the store already holds text for
+    (see `fetch`); it is what keeps per-posting requests off the steady-state
+    run.
     """
     parser = html_boards.LIST_MODES[cfg["mode"]]
     url = cfg.get("url") or board["url"]
@@ -286,7 +296,75 @@ def fetch_html_list(board: dict, cfg: dict) -> list[dict]:
             if job.get("url") and job["url"] not in seen:
                 seen.add(job["url"])
                 jobs.append(job)
-    return _normalise_rows(jobs, cfg["mode"])
+    rows = _normalise_rows(jobs, cfg["mode"])
+    if cfg.get("details"):
+        _add_details(rows, cfg, described or set())
+    return rows
+
+
+#: Detail-page fields the detail page owns, and those the card keeps if it spoke.
+_DETAIL_OVERWRITES = ("description", "posted_at")
+_DETAIL_FILLS = ("location",)
+
+
+def _add_details(rows: list[dict], cfg: dict, described: set[str]) -> None:
+    """Fetch the detail page of the postings whose text we do not hold yet.
+
+    These boards state the role, place and age on the card and keep the advert
+    itself on the posting's own page, so the description costs one request per
+    posting. That is only worth spending where it changes something, hence the
+    filter: a posting already stored with text is skipped, which is the whole
+    listing on a normal run, and only postings new to the store are read.
+
+    A failed fetch is not an error for the board: the row is kept with the card
+    it had, no text is stored for it, and the next run picks it up again
+    (a row with no text is a row this filter asks for). Failures are summarised
+    on stderr, because a row with no description scores on its title alone.
+    """
+    parser = html_boards.DETAIL_MODES[cfg["mode"]]
+    delay = max(0, int(cfg.get("delay_ms", 250))) / 1000
+    missing = [row for row in rows if row["url"].lower() not in described]
+    failed: list[str] = []
+    for n, job in enumerate(missing):
+        if n and delay:
+            time.sleep(delay)
+        try:
+            body = _http_get(job["url"]).decode("utf-8", "replace")
+        except Exception as exc:  # noqa: BLE001 - one page must not lose the row
+            failed.append(f"{job['url']} ({exc})")
+            continue
+        _apply_detail(job, parser(body))
+    if failed:
+        print(
+            f"{cfg['mode']}: {len(failed)}/{len(missing)} detail pages failed "
+            f"(kept title-only, retried next run): {failed[0]}",
+            file=sys.stderr,
+        )
+
+
+def _apply_detail(job: dict, detail: dict) -> None:
+    """Merge a detail page's fields into a card row.
+
+    A date from the detail page beats the card's relative age ("20 hours ago"),
+    and a description is only ever absent, so both are overwritten. The place
+    is the other way round: the card is what the classifier read, so the detail
+    only fills it in when the card said nothing.
+    """
+    for key in _DETAIL_OVERWRITES:
+        if detail.get(key):
+            job[key] = detail[key]
+    for key in _DETAIL_FILLS:
+        if detail.get(key) and not job.get(key):
+            job[key] = detail[key]
+    for key in ("salary_min", "salary_max", "salary_currency"):
+        if detail.get(key) is not None:
+            job[key] = detail[key]
+    if detail.get("employment_type"):
+        # The card's own badge wins when it has one ("Full Time" reads better
+        # than the schema's "FULL_TIME"); this fills the rows that lack it.
+        job.setdefault("metadata", {}).setdefault(
+            "job_type", detail["employment_type"]
+        )
 
 
 def _first_json(text: str):
@@ -357,8 +435,6 @@ def fetch_opencli_eval(board: dict, cfg: dict) -> list[dict]:
         wait_ms   default 3000 pause between tries
         timeout   default 120  seconds for each OpenCLI call
     """
-    import time
-
     session = str(cfg.get("session", "jobfit"))
     profile = cfg.get("profile")
     timeout = int(cfg.get("timeout", 120))
@@ -699,8 +775,14 @@ def fetch_x_bookmarks_cli(board: dict, cfg: dict) -> list[dict]:
     return _parse_opencli_tweets(tweets, limit)
 
 
-def fetch(board: dict) -> list[dict]:
-    """Dispatch on the board's scan_strategy."""
+def fetch(board: dict, described: set[str] | None = None) -> list[dict]:
+    """Dispatch on the board's scan_strategy.
+
+    `described` is the set of lowercased URLs the store already holds text for.
+    It is a hint, and only boards that pay one request per posting use it
+    (html boards with `details`), so a board whose listing already carries the
+    advert needs nothing passed in and a fetch can still be called without it.
+    """
     strategy = board["scan_strategy"]
     cfg = json.loads(board["scan_config"] or "{}")
     if strategy == "rss":
@@ -710,7 +792,7 @@ def fetch(board: dict) -> list[dict]:
     if strategy == "jobspy":
         return fetch_jobspy(board, cfg)
     if strategy == "html":
-        return fetch_html(board, cfg)
+        return fetch_html(board, cfg, described)
     raise ValueError(f"no fetcher for strategy {strategy!r}")
 
 

@@ -224,28 +224,28 @@
       "kind": "other",
       "url": "https://x.com/i/bookmarks",
       "enabled": 1,
-      "notes": "Own X bookmarks via logged-in Chrome (x_bookmarks_cli) or Playwright fallback (x_bookmarks, profile in secrets/). Run python3 -m scanner.tools.x_login once, and again if the scan log reports an expired session or Cloudflare challenge.",
+      "notes": "Own X bookmarks via logged-in Chrome (x_bookmarks_cli) or Playwright fallback (x_bookmarks, profile in secrets/). `on_demand` keeps it off a full run: it reads the user's own X session through a browser they are driving, so it is scanned only when named (`python3 -m scanner --board 'X Bookmarks'`). Run python3 -m scanner.tools.x_login once, and again if the scan log reports an expired session or Cloudflare challenge.",
       // YOUR OpenCLI profile id for the X-logged-in Chrome — change on a fresh clone
       "scan_strategy": "html",
-      "scan_config": { "mode": "x_bookmarks_cli", "profile": "g3pxjge8", "cap": 50 }
+      "scan_config": { "mode": "x_bookmarks_cli", "profile": "g3pxjge8", "cap": 50, "on_demand": true }
     },
     {
       "name": "JS Guru Jobs",
       "kind": "job_board",
       "url": "https://jsgurujobs.com/jobs",
       "enabled": 1,
-      "notes": "Server-rendered JS job list (10 per page). The card's country span is the employer's place and its Remote/Worldwide badges are the eligibility, so a Worldwide badge is what the region tag reads; the place rides in metadata. Descriptions live only on the detail page and are not fetched, so rows score on the title.",
+      "notes": "Server-rendered JS job list (10 per page). The card's country span is the employer's place and its Remote/Worldwide badges are the eligibility, so a Worldwide badge is what the region tag reads; the place rides in metadata. The advert lives on the posting's own page: `details` reads it, but only for postings the store has no text for yet, and that page's Posted date replaces the card's age.",
       "scan_strategy": "html",
-      "scan_config": { "mode": "jsgurujobs", "pages": 3 }
+      "scan_config": { "mode": "jsgurujobs", "pages": 3, "details": true }
     },
     {
       "name": "JavaScript Jobs",
       "kind": "job_board",
       "url": "https://javascript.jobs/jobs",
       "enabled": 1,
-      "notes": "Server-rendered JS job list (18 per page). Card carries title, employer, place and age only: no description, no remote flag.",
+      "notes": "Server-rendered JS job list (18 per page). Card carries title, employer, place and age only; the posting page carries a JobPosting JSON-LD with the advert, the posted date and the employment type, which `details` reads for postings the store has no text for yet.",
       "scan_strategy": "html",
-      "scan_config": { "mode": "javascript_jobs", "pages": 2 }
+      "scan_config": { "mode": "javascript_jobs", "pages": 2, "details": true }
     },
     {
       "name": "HiringCafe",
