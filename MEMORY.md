@@ -89,6 +89,17 @@
 
 ## Learnings (conversion, content, what works)
 
+- **A pool score is the ad's vocabulary, not the role's gates (19/10).** The
+  matcher gave 88 to `job #1133` and 17 to `job #2062` at one employer, and the
+  gates run the other way: #1133 wants a year of Go plus Kubernetes beyond the
+  basics with proof, while #2062 wants Go only "preferably" and lists financial
+  services, distributed systems and PostgreSQL among its nice-to-haves. The
+  matcher was right about the vocabulary (#1133 names Python and TypeScript in
+  passing, #2062 is Go, gRPC and protobuf) and that is all it claims to measure.
+  So when a pool row and a peer role at the same employer pull different ways,
+  read the must-haves on the employer's own board and pick on the gates, and do
+  not let a low score veto a role whose gates the candidate clears.
+
 - **A detail page is worth one request per posting, but only where the store
   has no text (19/10).** The two server-rendered boards keep the advert on the
   posting's own page, so `details: true` reads it. The first version read it for
