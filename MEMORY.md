@@ -30,8 +30,10 @@ number, a salary figure, a city, an employer name or a board slug here. Write
   Architect and AI/LLM Engineer. Title rules and weights:
   `scanner/keywords.jsonc`.
 - **The user leads teams.** That is confirmed (18/10), so Engineering Manager
-  is a live target. Which team, how many engineers and over what period are not
-  in `profile.jsonc` yet. Do not state a figure until they are there.
+  is a live target, and on 19/10 they stated direct people management for two
+  years or more, which clears the "2+ years" gate those postings ask for.
+  Which team, how many engineers and over what period are still not in
+  `profile.jsonc`. Do not state a figure until they are there.
 - **The CV shows less than the user has done.** The PDF prints "7+" years and
   omits part of the real tech surface. Prose may say "over 8". The figure is set
   per application, so read the CV that is actually attached.

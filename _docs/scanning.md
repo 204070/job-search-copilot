@@ -212,15 +212,20 @@ genuinely worldwide, and both said so in a structured field the aggregator never
 carried (`Anywhere`, "based elsewhere, you'll be hired via our global employer
 partner").
 
-Ashby and Greenhouse publish a whole board as JSON, so the check costs one fetch
-and no browser session:
+Ashby, Greenhouse and Lever publish a whole board as JSON, so the check costs
+one fetch and no browser session:
 
 ```bash
 # Ashby (carries each posting's structured location)
 curl -s 'https://api.ashbyhq.com/posting-api/job-board/<slug>?includeCompensation=true'
 # Greenhouse (jobs + full advert text)
 curl -s 'https://boards-api.greenhouse.io/v1/boards/<slug>/jobs?content=true'
+# Lever (the whole board; append /<posting-uuid> for one posting)
+curl -s 'https://api.lever.co/v0/postings/<slug>?mode=json'
 ```
+
+Lever also renders the apply page server-side, so its whole field list comes out
+of one fetch of `<posting-url>/apply`. Detail: `_docs/lever.md`.
 
 - Write the employer's own value into `jobs.location` and let `classify` derive
   the tag. Keep the provenance in `jobs.metadata.employer_ad`.
