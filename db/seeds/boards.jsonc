@@ -14,9 +14,15 @@
       "kind": "job_board",
       "url": "https://weworkremotely.com/",
       "enabled": 1,
-      "notes": "Remote jobs in design, programming, marketing and more",
+      "notes": "Remote jobs in design, programming, marketing and more. Three category feeds (programming, full-stack, devops/sysadmin) under one board row; a posting listed in two categories is stored once.",
       "scan_strategy": "rss",
-      "scan_config": { "feed_url": "https://weworkremotely.com/categories/remote-programming-jobs.rss" }
+      "scan_config": {
+        "feed_urls": [
+          "https://weworkremotely.com/categories/remote-programming-jobs.rss",
+          "https://weworkremotely.com/categories/remote-full-stack-programming-jobs.rss",
+          "https://weworkremotely.com/categories/remote-devops-sysadmin-jobs.rss"
+        ]
+      }
     },
     {
       "name": "Levels.fyi",
@@ -222,6 +228,42 @@
       // YOUR OpenCLI profile id for the X-logged-in Chrome — change on a fresh clone
       "scan_strategy": "html",
       "scan_config": { "mode": "x_bookmarks_cli", "profile": "g3pxjge8", "cap": 50 }
+    },
+    {
+      "name": "JS Guru Jobs",
+      "kind": "job_board",
+      "url": "https://jsgurujobs.com/jobs",
+      "enabled": 1,
+      "notes": "Server-rendered JS job list (10 per page). The card's country span is the employer's place and its Remote/Worldwide badges are the eligibility, so a Worldwide badge is what the region tag reads; the place rides in metadata. Descriptions live only on the detail page and are not fetched, so rows score on the title.",
+      "scan_strategy": "html",
+      "scan_config": { "mode": "jsgurujobs", "pages": 3 }
+    },
+    {
+      "name": "JavaScript Jobs",
+      "kind": "job_board",
+      "url": "https://javascript.jobs/jobs",
+      "enabled": 1,
+      "notes": "Server-rendered JS job list (18 per page). Card carries title, employer, place and age only: no description, no remote flag.",
+      "scan_strategy": "html",
+      "scan_config": { "mode": "javascript_jobs", "pages": 2 }
+    },
+    {
+      "name": "HiringCafe",
+      "kind": "job_board",
+      "url": "https://hiringcafe.com/",
+      "enabled": 1,
+      "notes": "Cloudflare 403s plain requests, so the search page is read from your own Chrome through OpenCLI's Browser Bridge (scanner/js/hiringcafe_search.js, mode opencli_eval). The search below is the user's own: query 'software', workplace types Remote/Hybrid/Field, sorted by date; page 1 is 120 rows. Needs Chrome open, like X Bookmarks. Rows carry the employer's own apply_url, so dedupe lands on the real posting.",
+      "scan_strategy": "html",
+      "scan_config": {
+        "mode": "opencli_eval",
+        "profile": "g3pxjge8",
+        "session": "jobfit",
+        // YOUR search, exactly as the HiringCafe URL encodes it
+        "url": "https://hiringcafe.com/classic?searchState=%7B%22searchQuery%22%3A%22software%22%2C%22workplaceTypes%22%3A%5B%22Remote%22%2C%22Hybrid%22%2C%22Field%22%5D%2C%22defaultToUserLocation%22%3Afalse%2C%22sortBy%22%3A%22date%22%7D",
+        "js_file": "hiringcafe_search.js",
+        "tries": 10,
+        "wait_ms": 3000
+      }
     },
     {
       "name": "Manual",

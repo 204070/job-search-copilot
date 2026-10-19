@@ -19,7 +19,7 @@ from datetime import date, datetime
 from pathlib import Path
 from urllib.parse import urljoin
 
-from scanner import bookmarks
+from scanner import bookmarks, html_boards
 
 USER_AGENT = "job-search-copilot/1.0 (personal job-search bot)"
 
@@ -212,7 +212,11 @@ def fetch_jobspy(board: dict, cfg: dict) -> list[dict]:
 # An `html`-strategy board names its parser in scan_config["mode"]. Modes that
 # do not appear here are reported as "not scanned yet", so boards can be seeded
 # before their parser exists (see boards.notes + migrations 0009/0010).
-KNOWN_HTML_MODES = {"x_bookmarks", "x_bookmarks_cli"}
+KNOWN_HTML_MODES = {
+    "x_bookmarks", "x_bookmarks_cli",   # own X bookmarks (Playwright / OpenCLI)
+    "jsgurujobs", "javascript_jobs",    # server-rendered listing HTML
+    "opencli_eval",                     # page data only the browser can reach
+}
 
 
 def fetch_html(board: dict, cfg: dict) -> list[dict]:
@@ -221,7 +225,175 @@ def fetch_html(board: dict, cfg: dict) -> list[dict]:
         return fetch_x_bookmarks(board, cfg)
     if mode == "x_bookmarks_cli":
         return fetch_x_bookmarks_cli(board, cfg)
+    if mode in html_boards.LIST_MODES:
+        return fetch_html_list(board, cfg)
+    if mode == "opencli_eval":
+        return fetch_opencli_eval(board, cfg)
     raise ValueError(f"no parser for html mode {mode!r}")
+
+
+#: keys `store.upsert_job` accepts; anything else a parser emits is dropped.
+_JOB_KEYS = {
+    "title", "company", "url", "source_ref", "description", "location",
+    "workplace_type", "posted_at", "salary_min", "salary_max",
+    "salary_currency", "metadata",
+}
+#: jobs.workplace_type's CHECK constraint - never send it a word it rejects.
+_WORKPLACE_TYPES = {"remote", "hybrid", "onsite"}
+
+
+def _normalise_rows(items, via: str) -> list[dict]:
+    """Rows from a parser or a browser adapter -> the keys the store takes.
+
+    Both paths are told to speak the store's vocabulary, but a board's own
+    words ("Field", "", "Full-time") reach `workplace_type` often enough that
+    the enum is enforced here rather than trusted: an unknown word becomes
+    `unknown`, which is honest and inserts."""
+    jobs: list[dict] = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        job = {key: item.get(key) for key in _JOB_KEYS if key in item}
+        for key in ("title", "company", "url", "source_ref", "description",
+                    "location", "posted_at", "salary_currency"):
+            value = job.get(key)
+            if isinstance(value, str):
+                job[key] = value.strip() or None
+        if not job.get("title") or not job.get("url"):
+            continue
+        workplace = str(job.get("workplace_type") or "").lower()
+        job["workplace_type"] = workplace if workplace in _WORKPLACE_TYPES else "unknown"
+        metadata = job.get("metadata") if isinstance(job.get("metadata"), dict) else {}
+        metadata.setdefault("via", via)
+        job["metadata"] = metadata
+        jobs.append(job)
+    return jobs
+
+
+def fetch_html_list(board: dict, cfg: dict) -> list[dict]:
+    """A server-rendered listing page, parsed by scanner.html_boards.
+
+    scan_config keys: `mode` picks the parser, `pages` (default 1) how many
+    listing pages to walk, `url` overrides the board's own url.
+    """
+    parser = html_boards.LIST_MODES[cfg["mode"]]
+    url = cfg.get("url") or board["url"]
+    jobs: list[dict] = []
+    seen: set[str] = set()
+    for page in range(1, max(1, int(cfg.get("pages", 1))) + 1):
+        page_url = url if page == 1 else f"{url}{'&' if '?' in url else '?'}page={page}"
+        for job in parser(_http_get(page_url).decode("utf-8", "replace")):
+            if job.get("url") and job["url"] not in seen:
+                seen.add(job["url"])
+                jobs.append(job)
+    return _normalise_rows(jobs, cfg["mode"])
+
+
+def _first_json(text: str):
+    """First JSON value in a CLI's stdout (it prints bare values, sometimes
+    wrapped), or None."""
+    start = min((i for i in (text.find("["), text.find("{")) if i >= 0), default=-1)
+    if start < 0:
+        return None
+    try:
+        return json.JSONDecoder().raw_decode(text[start:])[0]
+    except ValueError:
+        return None
+
+
+def _opencli_browser(args: list[str], profile: str | None, timeout: int) -> str:
+    """Run one `opencli browser ...` command, returning its stdout."""
+    import os
+    import subprocess
+
+    cmd = ["opencli"]
+    if profile:
+        cmd += ["--profile", str(profile)]
+    cmd += ["browser", *args]
+    try:
+        res = subprocess.run(
+            cmd, capture_output=True, text=True, timeout=timeout,
+            env=dict(os.environ),
+        )
+    except FileNotFoundError as exc:
+        raise RuntimeError(
+            "opencli not installed — see https://github.com/jackwener/opencli"
+        ) from exc
+    except subprocess.TimeoutExpired as exc:
+        raise RuntimeError(
+            f"opencli browser {args[1]} timed out after {timeout}s — "
+            "is Chrome open? (opencli doctor)"
+        ) from exc
+    out = (res.stdout or "").strip()
+    if res.returncode != 0:
+        msg = out or (res.stderr or "").strip() or f"exit {res.returncode}"
+        raise RuntimeError(
+            f"opencli browser {args[1]} failed: {msg[:300]} — run `opencli doctor`"
+        )
+    return out
+
+
+def fetch_opencli_eval(board: dict, cfg: dict) -> list[dict]:
+    """A board whose data only the browser can reach, read through OpenCLI's
+    Browser Bridge (the same way X Bookmarks is read).
+
+    For sites that reject plain HTTP (HiringCafe answers 403 behind Cloudflare)
+    or render their listings client-side. The scanner opens `url` in a new
+    background tab of the user's own Chrome, evaluates the board's adapter
+    (scan_config `js_file`, resolved under scanner/js/) in the page, closes the
+    tab and normalises what came back.
+
+    The adapter must be one expression evaluating to a JSON string: an array of
+    rows in the store's vocabulary, or `null` while the page is still loading
+    (that is what makes the retry loop below wait for data instead of accepting
+    an empty page).
+
+    scan_config keys:
+        url       page to open (the search URL, for a search-driven board)
+        js_file   adapter under scanner/js/ (or an inline `js` expression)
+        profile   OpenCLI bridge profile id when several Chromes are connected
+        session   named browser session (default "jobfit")
+        tries     default 10   evaluations before giving up
+        wait_ms   default 3000 pause between tries
+        timeout   default 120  seconds for each OpenCLI call
+    """
+    import time
+
+    session = str(cfg.get("session", "jobfit"))
+    profile = cfg.get("profile")
+    timeout = int(cfg.get("timeout", 120))
+    js = cfg.get("js")
+    if not js:
+        js_path = Path(__file__).resolve().parent / "js" / cfg["js_file"]
+        if not js_path.exists():
+            raise RuntimeError(f"no OpenCLI adapter at {js_path}")
+        js = js_path.read_text(encoding="utf-8")
+
+    opened = _opencli_browser(
+        [session, "tab", "new", cfg["url"], "--window", "background"], profile, timeout
+    )
+    tab = (_first_json(opened) or {}).get("page")
+    if not tab:
+        raise RuntimeError(f"opencli opened no tab for {cfg['url']}: {opened[:200]}")
+    try:
+        tries = max(1, int(cfg.get("tries", 10)))
+        for attempt in range(tries):
+            data = _first_json(_opencli_browser(
+                [session, "eval", js, "--tab", tab], profile, timeout
+            ))
+            if isinstance(data, list):
+                return _normalise_rows(data, "opencli_eval")
+            if attempt < tries - 1:
+                time.sleep(int(cfg.get("wait_ms", 3000)) / 1000)
+        raise RuntimeError(
+            f"adapter returned no rows after {tries} tries at {cfg['url']} — "
+            "page shape may have changed"
+        )
+    finally:
+        try:  # never leave a tab behind, even when the read failed
+            _opencli_browser([session, "tab", "close", tab], profile, 60)
+        except Exception:  # noqa: BLE001 - closing is best-effort
+            pass
 
 
 def _resolve_tco(url: str) -> str:
@@ -582,9 +754,27 @@ def _local(tag: str) -> str:
 
 
 def fetch_rss(board: dict, cfg: dict) -> list[dict]:
-    """RSS 2.0 feed -> jobs. Namespace-tolerant (works for plain RSS and
-    feeds with custom namespaces like Himalayas/RemoteOK)."""
-    root = _parse_xml(_http_get(cfg["feed_url"]))
+    """RSS 2.0 feed(s) -> jobs. Namespace-tolerant (works for plain RSS and
+    feeds with custom namespaces like Himalayas/RemoteOK).
+
+    One board often publishes several feeds by category; `feed_urls` lists them
+    and each item still records the feed it came from (WW Remotely's programming,
+    full-stack and devops categories are the same board)."""
+    feeds = cfg.get("feed_urls") or [cfg["feed_url"]]
+    jobs: list[dict] = []
+    seen_urls: set[str] = set()
+    for feed_url in feeds:
+        for job in _rss_jobs(_http_get(feed_url), feed_url):
+            if job["url"] in seen_urls:
+                continue  # a posting listed in two categories is still one job
+            seen_urls.add(job["url"])
+            jobs.append(job)
+    return jobs
+
+
+def _rss_jobs(body: bytes, feed_url: str) -> list[dict]:
+    """Items of one RSS document, in `store.upsert_job`'s shape."""
+    root = _parse_xml(body)
     jobs = []
     for item in root.iter():
         if _local(item.tag) != "item":
@@ -613,6 +803,6 @@ def fetch_rss(board: dict, cfg: dict) -> list[dict]:
             "location": fields.get("location") or fields.get("locationRestriction"),
             "workplace_type": "remote",  # remote-only feeds
             "posted_at": _iso(fields.get("pubDate") or fields.get("date")),
-            "metadata": {"feed": cfg["feed_url"]},
+            "metadata": {"feed": feed_url},
         })
     return jobs

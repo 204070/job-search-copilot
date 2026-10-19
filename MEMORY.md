@@ -84,6 +84,29 @@
 
 ## Learnings (conversion, content, what works)
 
+- **A board's badge is the eligibility; its place field is the employer's
+  location (19/10).** JS Guru Jobs prints `Location: Armenia` beside
+  `Work Format: Remote / Worldwide` for a posting whose own text says "100%
+  remote | Global team", so reading the place span as the restriction would have
+  tagged a worldwide role `region_gated` and buried it: the badge is the
+  eligibility sentence, the place is where the employer sits, and the place goes
+  to `jobs.metadata.employer_location` (10 of the first 30 rows carried a
+  Worldwide badge). HiringCafe's derived `is_workplace_worldwide_ok` earned no
+  such promotion: it was true for 0 of 120 rows, so it rides in metadata and the
+  row keeps the posting's own place string. Same rule as always, one step
+  earlier: a flag a board derives has to be checked against a sample before it is
+  allowed to speak for the ad.
+- **A Cloudflare-walled board is readable through the bridge, at the price of a
+  tab (19/10).** HiringCafe answers 403 to every plain request, but its search
+  results arrive server-rendered in `__NEXT_DATA__` and 120 rows per page carry
+  the employer's own `apply_url`, which is the URL dedupe wants. The read is the
+  same bridge the forms use (`tab new <url> --window background` →
+  `eval '<js>' --tab <id>` → `tab close <id>`), so it became `mode:
+  opencli_eval` with the site's adapter in `scanner/js/`, and it needs Chrome
+  open under cron like X Bookmarks. The adapter's whole contract: return `null`
+  while the page is still loading and `[]` only when it has loaded and found
+  nothing, because that `null` is what makes the caller retry instead of
+  believing an empty page. Mechanism and command shapes: `_docs/tooling.md`.
 - **A board's `Remote` is not a location: read the eligibility sentence (19/10).**
   Three employers read off their own ATS this sitting all publish the structured
   value `Remote`, and the ad text then narrowed it three different ways: one
@@ -288,6 +311,13 @@
   WP feed; namespaced `job_listing:company`/`:location` + body in
   `content:encoded`). Arbeitnow verified but NOT added: German on-site roles,
   no remote filter, would flood the board.
+- **Sources added 19/10, cheapest path first:** WWR's full-stack and
+  devops/sysadmin categories (now three feeds under one board row, 95 items
+  deduped from 116), JS Guru Jobs and JavaScript Jobs (server-rendered lists,
+  no feed and no JSON, parsed by pattern; title-only scoring, so their rows sit
+  in the lower bands), and HiringCafe (browser-read, above). All four are
+  listed in `db/seeds/boards.jsonc`; a fresh clone gets them from
+  `python3 -m db.seed`.
 - **`opencli` must be on PATH for the scanner's X-bookmarks mode.** Under cron
   it reports "not installed"; in-shell it works once
   `~/.local/share/vite-plus/bin` is on PATH.

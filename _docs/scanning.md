@@ -9,11 +9,21 @@ against `scanner/keywords.jsonc`, and appends new matches to
 
 | strategy | handler | config keys | notes |
 |---|---|---|---|
-| `rss`     | `scanner/fetchers.fetch_rss`     | `feed_url` | RSS 2.0, namespace-tolerant; repairs bare `&`/double-encoded entities; reads `content:encoded` when `description` is empty; recovers an employer embedded in the title (WWR, Himalayas, Real Work From Anywhere) |
+| `rss`     | `scanner/fetchers.fetch_rss`     | `feed_url`, or `feed_urls` for several | RSS 2.0, namespace-tolerant; repairs bare `&`/double-encoded entities; reads `content:encoded` when `description` is empty; recovers an employer embedded in the title (WWR, Himalayas, Real Work From Anywhere); a posting listed in two of a board's category feeds is stored once |
 | `api`     | `scanner/fetchers.fetch_api`     | `source` (`remotive`/`remoteok`/`mapped`), `endpoint` | public JSON APIs; `mapped` needs no code — see below |
 | `jobspy`  | `scanner/fetchers.fetch_jobspy`  | `source`, `search_term`, `location`, `results_wanted`, `hours_old` | needs `pip install python-jobspy` |
-| `html`    | `scanner/fetchers.fetch_html` (mode-dispatched) | `mode` (+ mode keys: `profile_dir`, `scrolls`, `cap` for `x_bookmarks`) | browser-scraped boards; unknown `mode` = "not scanned yet" |
+| `html`    | `scanner/fetchers.fetch_html` (mode-dispatched) | `mode` (+ mode keys: `pages` for the list parsers; `profile_dir`, `scrolls`, `cap` for `x_bookmarks`; `url`, `profile`, `session`, `js_file`, `tries`, `wait_ms` for `opencli_eval`) | browser-scraped and server-rendered boards; unknown `mode` = "not scanned yet" |
 | `manual`  | never auto-scanned | — | e.g. saved Google searches |
+
+The `html` modes, cheapest first:
+
+| mode | what it reads | code |
+|---|---|---|
+| `jsgurujobs`, `javascript_jobs` | plain server-rendered listing pages, fetched with `_http_get` and parsed by anchored patterns | `scanner/html_boards.py` (pure parsers + selftest) |
+| `opencli_eval` | a page whose data only a browser can reach (Cloudflare 403, client-side rendering): read from your own Chrome through OpenCLI's bridge | fetcher in `scanner/fetchers.py`, site adapter in `scanner/js/<js_file>` |
+| `x_bookmarks_cli` | your X bookmarks, same bridge | `scanner/fetchers.py` |
+| `x_bookmarks` | your X bookmarks from a persistent Playwright profile (dormant fallback) | `scanner/fetchers.py` |
+
 
 ### `source: mapped` — a JSON board with no new code
 
@@ -31,14 +41,64 @@ Recognised `fields` keys are the ones `store.upsert_job` takes; `description`
 is HTML-stripped, `location`/`company` are trimmed to `None` when empty. Add a
 branch in `fetch_api` only when a board needs real logic.
 
-Active sources: WWR (programming RSS), Himalayas (RSS), Real Work From
-Anywhere (RSS), Jobspresso (dev-category RSS), Jobicy (mapped API), Remotive +
-RemoteOK (APIs), Indeed/LinkedIn/ZipRecruiter (JobSpy), X Bookmarks
-(OpenCLI/Playwright, your own session). ZipRecruiter currently returns 403 from
-this network; LinkedIn rate-limits. 6 `html` boards stay pending —
-reconnaissance status for each lives in `boards.notes` (migration 0009);
-paywalled/dormant boards (Remote4Africa, RemoteAfrica, Crossover) are
-`manual`, Cleverjobs is disabled.
+Active sources: WWR (three category feeds: programming, full-stack, devops),
+Himalayas (RSS), Real Work From Anywhere (RSS), Jobspresso (dev-category RSS),
+JS Guru Jobs and JavaScript Jobs (server-rendered HTML lists), Jobicy (mapped
+API), Remotive + RemoteOK (APIs), Indeed/LinkedIn/ZipRecruiter (JobSpy),
+HiringCafe (browser-read search, needs Chrome), X Bookmarks (OpenCLI/Playwright,
+your own session). ZipRecruiter currently returns 403 from this network;
+LinkedIn rate-limits. 6 `html` boards stay pending — reconnaissance status for
+each lives in `boards.notes` (migration 0009); paywalled/dormant boards
+(Remote4Africa, RemoteAfrica, Crossover) are `manual`, Cleverjobs is disabled.
+
+## Server-rendered list boards (`jsgurujobs`, `javascript_jobs`)
+
+Both boards publish no feed and no JSON, but their listing pages arrive fully
+rendered, so no browser is involved: `fetch_html_list` walks `pages` listing
+pages and hands each to the parser named by `mode`. The parsers live in
+`scanner/html_boards.py`, are pure (HTML in, store-shaped rows out) and are
+checked against trimmed real card markup by `python3 -m scanner.html_boards`,
+which is the point: a board's markup change should fail a selftest, not a scan.
+
+Two rules those parsers follow, because both boards mix the two ideas:
+
+- **The card's country span is the employer's place, not the eligibility.**
+  JS Guru Jobs prints `Location: Armenia` next to `Work Format: Remote /
+  Worldwide`, and the posting's own text says "100% remote | Global team": the
+  badge is what the region classifier must read, so a Worldwide badge becomes
+  `jobs.location` and the raw place stays in `metadata.employer_location`.
+- **Only what the card states is stored.** Descriptions live on the detail
+  page, which would cost one request per posting, so these two boards score on
+  the title alone (their rows sit in the lower score bands accordingly). Add a
+  detail fetch when the boards start producing leads worth it.
+
+## HiringCafe (`mode: opencli_eval`)
+
+HiringCafe answers plain HTTP with a Cloudflare 403, but its search results
+arrive server-rendered into `window.__NEXT_DATA__.props.pageProps.ssrHits`
+(120 rows for one search page), and each row carries the employer's own
+`apply_url`. So the board is read the way X Bookmarks is: through OpenCLI's
+Browser Bridge, out of your own logged-in Chrome.
+
+The scanner opens `scan_config.url` in a new background tab, evaluates
+`scanner/js/<js_file>` in the page, closes the tab, and normalises what came
+back. The adapter is the site's whole adapter, and the fetcher's contract with
+it is three lines: one expression, returning a JSON string of store-shaped
+rows, or `null` while the page is still loading (that `null` is what makes the
+fetcher retry instead of accepting an empty page). Mechanism and command
+shapes: `_docs/tooling.md`.
+
+- Needs Chrome open, so under cron it reports the bridge error on days it is
+  not — like X Bookmarks, and other boards are unaffected.
+- Rows carry the employer's own posting URL, so dedupe lands on the real ad
+  (a row already stored from another board counts as "already known").
+- The search is yours, verbatim, in `scan_config.url`: query `software`,
+  workplace types Remote/Hybrid/Field, newest first. Worth knowing what that
+  returns: of a 120-row page, 79 came back `hybrid`, 30 `remote` and 10 with no
+  type at all, and the region tag split 66 `region_gated` / 42 `us_only` /
+  11 `unknown`. Tighten the URL (drop `Hybrid`/`Field`, or add a country) if the
+  volume is not worth it.
+
 
 
 ## Region scope: can you actually take this job?
@@ -216,12 +276,23 @@ has no bookmark read below Pro tier, and v1.1 — which had
 
 ## Adding a board
 
-1. Insert a `boards` row (`kind='job_board'`) with `scan_strategy` +
-   `scan_config` via a migration, or directly for a one-off.
-2. Run `python3 -m scanner.tools.probe_boards` — it reports, per `html` board,
-   whether a real feed/sitemap/JSON-LD/JSON endpoint exists (filters out SPA
-   "200 HTML fallback" false positives). Prefer the cheapest path:
-   `rss` flip → existing `api`/`jobspy` → generic parser → per-board code.
-3. For a new API shape, add a branch in `fetch_api`; for a new feed just set
-   `feed_url`.
-4. Re-run `python3 -m db.migrate`, then `python3 -m scanner --board NAME`.
+1. Add the board to `db/seeds/boards.jsonc` (`kind`, `url`, `scan_strategy`,
+   `scan_config`, `notes`) and run `python3 -m db.seed` — it upserts by `name`,
+   prints `+n ~n`, and `--dry-run` shows the same without writing. `--prune`
+   disables boards missing from the file; rows are never deleted.
+2. Before writing any parser, run `python3 -m scanner.tools.probe_boards` — it
+   reports, per `html` board, whether a real feed/sitemap/JSON-LD/JSON endpoint
+   exists (filters out SPA "200 HTML fallback" false positives). Prefer the
+   cheapest path: `rss` flip → existing `api`/`jobspy` → `mapped` config →
+   listing-page parser → browser read.
+3. Then, per shape:
+   - a feed: set `feed_url`, or `feed_urls` for a board's several categories;
+   - a JSON API: add a branch in `fetch_api`, or just `fields` for `mapped`;
+   - a server-rendered listing page: add a parser to `scanner/html_boards.py`
+     and register it in `LIST_MODES`, with selftest cases cut from the real
+     card (`python3 -m scanner.html_boards` runs them);
+   - a page only a browser can reach: add a site adapter under `scanner/js/`
+     and point `scan_config.js_file` at it (`mode: opencli_eval`).
+4. Scan it alone first: `python3 -m scanner --board NAME --dry-run`, then
+   without `--dry-run`. `logs/leads/YYYY-MM-DD.md` gets the report either way.
+

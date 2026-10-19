@@ -9,6 +9,40 @@ Load when driving the browser (nearly every application session).
 - Two profiles connect (`g3pxjge8`, `6bfymbf4`) → always pass
   `--profile <name>`. `opencli doctor` FAILs on multi-profile even with
   `--profile` given (ignore that; commands work).
+- Options go AFTER the subcommand: `browser jobfit tab list --window
+  background` works, `browser --window background jobfit …` dies with
+  `unknown command 'jobfit'` (commander reads the session name as its
+  subcommand).
+
+## Reading a page's data (not filling a form)
+
+The same bridge that fills forms also reads a page whose data never leaves the
+browser. Three commands, and the tab is closed again (tested 19/10/2026):
+
+```bash
+# 1. open a fresh tab; prints {"page": "<target id>", "url": "..."}
+opencli --profile g3pxjge8 browser jobfit tab new '<url>' --window background
+# 2. run one JS expression in that tab; prints its value
+opencli --profile g3pxjge8 browser jobfit eval 'JSON.stringify([...])' --tab '<id>'
+# 3. always close it, including on failure
+opencli --profile g3pxjge8 browser jobfit tab close '<id>'
+```
+
+- `eval` prints the expression's value: a bare `JSON.stringify(...)` comes back
+  as JSON text, so parse from the first `[`/`{` rather than expecting an
+  envelope.
+- Return a JSON string of only the fields wanted. Shipping a page's whole state
+  through stdout is slow; HiringCafe's `__NEXT_DATA__` is megabytes, the
+  adapter's 120 rows are not.
+- A client-rendered page is empty for the first seconds, and `eval` does not
+  await promises. The convention the scanner relies on: return `null` until the
+  data exists (`[]` means "loaded, nothing found"), so the caller can retry.
+- `--window background` keeps focus where it was; the tab may still take
+  focus for a moment while it loads.
+- This is what `mode: opencli_eval` does per scan (`scanner/js/<js_file>` is the
+  adapter); `python3 -m scanner --board HiringCafe --dry-run` is the manual
+  equivalent.
+
 
 ## Commands that matter
 
