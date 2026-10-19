@@ -21,6 +21,12 @@ Optimize for quality of opportunities, interview conversion, offer quality, and 
 - Private documents live in `artifacts/` (see `artifacts/README.md`); daily
   lead reports in `logs/leads/`.
 
+## Writing style
+
+Write in ASD-STE100 Simplified Technical English as a guide, not as a strict
+rule: short sentences, active voice, one term per idea, no metaphors, no em
+dashes. Keep the tone clear and conversational professional English.
+
 ## Application workflow (semi-automatic)
 
 - Agent drives my real browser via OpenCLI (`--profile <name>`; session pattern:

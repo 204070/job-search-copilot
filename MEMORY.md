@@ -47,6 +47,10 @@ number, a salary figure, a city, an employer name or a board slug here. Write
   `_docs/team/application-specialist.md`.
 - **Browser:** the OpenCLI Browser Bridge drives the user's own Chrome
   (`--profile <name>`, `jobfit` session). Detail: `_docs/tooling.md`.
+- **A commit message carries no employer name, no country and no board slug.**
+  Rewriting history with a force push is allowed to fix one. The older bodies
+  that break this stand as they are, by the user's decision of 19/10. Do not
+  raise them again.
 
 ## Learnings
 
@@ -86,7 +90,11 @@ Short rules only. The worked cases live in the file each group points to.
   user when a value is missing.
 - A pay figure is the user's. Use the employer's published band when the
   posting carries one. Otherwise use the default in `profile.jsonc` for a
-  remote role open internationally. Flag the figure at handover.
+  remote role open internationally. Flag the figure at handover. A field that
+  takes one number cannot hold the range: send its top. → `_docs/workable.md`
+- A set of fields can hide its own question. Workable shows the labels `A1` to
+  `C2` with no question above them. Read the group legend and the field names
+  before you fill. → `_docs/workable.md`
 - A fact about the user goes to `profile.jsonc`. The wording sent to one
   employer goes to the question bank.
 - Do not pad an answer with a weak public repository. Do not claim the stack an
@@ -109,5 +117,8 @@ Short rules only. The worked cases live in the file each group points to.
   the times.
 - Dedupe is by posting URL and by board plus source id. The same role on two
   boards with two URLs can stay two rows.
+- An application row takes its job out of the lead list. To promote a pool row
+  to the employer's own posting, add the new row, point the application at it,
+  and archive the pool row with a reason that says so. → `_docs/jobs-db.md`
 - Two applications to one employer in seven days is the limit. The digest
   derives it and prints the date it clears. → `_docs/jobs-db.md`

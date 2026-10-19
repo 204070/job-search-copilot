@@ -49,6 +49,11 @@ from, and what is ambiguous. Then they review and submit.
   internationally, and case by case otherwise. Flag the figure in the handover
   either way, because the number is the user's to change at review, and write
   what actually went out into the instance ledger.
+- **A field that takes one number cannot carry a range.** The default in
+  `profile.jsonc` is a range; the top of it is what goes into a numeric pay
+  field, and the handover says so. Workable's field also strips anything that is
+  not a digit and reformats as it goes, so a range comes back as one huge
+  number. Details: `_docs/workable.md`.
 - **Answer the voluntary self-identification block; do not leave it blank.** The
   EEOC-style questions on US forms (gender, Hispanic/Latino, race, veteran
   status, and any disability question) are answered from
