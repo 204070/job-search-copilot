@@ -5,9 +5,9 @@
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")/.."
 # cron's PATH is minimal, so `opencli` is not on it and the boards read through
-# Chrome (HiringCafe, X Bookmarks) report "opencli not installed" instead of
-# running. This dir holds opencli and node, no interpreter, so prepending it
-# only makes the bridge reachable.
+# Chrome (HiringCafe, Work at a Startup, X Bookmarks) report "opencli not
+# installed" instead of running. This dir holds opencli and node, no
+# interpreter, so prepending it only makes the bridge reachable.
 export PATH="$HOME/.local/share/vite-plus/bin:$PATH"
 mkdir -p logs/leads
 exec python3 -m scanner

@@ -34,9 +34,12 @@ opencli --profile g3pxjge8 browser jobfit tab close '<id>'
 - Return a JSON string of only the fields wanted. Shipping a page's whole state
   through stdout is slow; HiringCafe's `__NEXT_DATA__` is megabytes, the
   adapter's 120 rows are not.
-- A client-rendered page is empty for the first seconds, and `eval` does not
-  await promises. The convention the scanner relies on: return `null` until the
-  data exists (`[]` means "loaded, nothing found"), so the caller can retry.
+- A client-rendered page is empty for the first seconds. `eval` does await a
+  promise it is handed (both adapters are async IIFEs, and the Work at a Startup
+  one makes its own requests inside the eval), but a page that has not fetched
+  its data yet has nothing to give. So the convention the scanner relies on:
+  return `null` until the data exists (`[]` means "loaded, nothing found"), and
+  the caller retries.
 - `--window background` keeps focus where it was; the tab may still take
   focus for a moment while it loads.
 - This is what `mode: opencli_eval` does per scan (`scanner/js/<js_file>` is the

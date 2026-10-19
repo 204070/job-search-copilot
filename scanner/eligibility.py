@@ -100,7 +100,11 @@ _REGION = re.compile(
     r"australia|new zealand|india|pakistan|bangladesh|philippines|indonesia|"
     r"malaysia|vietnam|thailand|singapore|japan|south korea|israel|brazil|"
     r"mexico|argentina|colombia|chile|peru|nigeria|kenya|ghana|egypt|morocco|"
-    r"south africa|middle east|gcc|dubai|uae|lagos)\b",
+    r"south africa|middle east|gcc|dubai|uae|lagos|"
+    # named here because _COUNTRY_CODES spells the two-letter form out, and a
+    # country named in a place string is a gate wherever it is
+    r"italy|belgium|czechia|czech republic|kazakhstan|taiwan|hong kong|china|"
+    r"saudi arabia|turkey|t[üu]rkiye|zambia|namibia|russia)\b",
     re.I,
 )
 
@@ -117,6 +121,69 @@ _HOME_REGION = re.compile(
     r"\b(africa|sub[- ]saharan|west africa|emea|mea|nigeria|ecowas|lagos)\b",
     re.I,
 )
+
+#: ISO 3166-1 alpha-2 codes, for the boards that state a place as
+#: "City, Region, CC": Work at a Startup writes "San Francisco, CA, US",
+#: "Bengaluru, KA, IN", "London, England, GB". Only a code that ENDS the string
+#: is read, because in the middle of one it is a subdivision ("CA" in that first
+#: string is California, not Canada), and a code that is the whole string is
+#: read too ("US" alone). Names are the spellings the patterns below already
+#: know, so a code never decides a scope by itself - it only makes a place
+#: legible. A code absent from this table is left exactly as the ad wrote it.
+_COUNTRY_CODES = {
+    "us": "United States", "gb": "United Kingdom", "uk": "United Kingdom",
+    "ie": "Ireland", "ca": "Canada", "de": "Germany", "fr": "France",
+    "es": "Spain", "pt": "Portugal", "it": "Italy", "nl": "Netherlands",
+    "be": "Belgium", "ch": "Switzerland", "pl": "Poland", "ro": "Romania",
+    "ua": "Ukraine", "cz": "Czechia", "kz": "Kazakhstan", "se": "Sweden",
+    "no": "Norway", "dk": "Denmark", "fi": "Finland", "ee": "Estonia",
+    "au": "Australia", "nz": "New Zealand", "in": "India", "pk": "Pakistan",
+    "bd": "Bangladesh", "ph": "Philippines", "id": "Indonesia",
+    "my": "Malaysia", "vn": "Vietnam", "th": "Thailand", "sg": "Singapore",
+    "jp": "Japan", "kr": "South Korea", "tw": "Taiwan", "hk": "Hong Kong",
+    "cn": "China", "il": "Israel", "ae": "UAE", "sa": "Saudi Arabia",
+    "tr": "Turkey", "br": "Brazil", "mx": "Mexico", "ar": "Argentina",
+    "co": "Colombia", "cl": "Chile", "pe": "Peru", "ng": "Nigeria",
+    "ke": "Kenya", "gh": "Ghana", "eg": "Egypt", "ma": "Morocco",
+    "za": "South Africa", "zm": "Zambia", "na": "Namibia", "ru": "Russia",
+}
+
+#: The US' own two-letter codes, which a country code can look like: "CA" is
+#: California before it is Canada, "DE" Delaware before Germany. A place that is
+#: just "City, XX" is left alone when XX is one of these, because that string
+#: does not say which of the two it means ("Chesapeake, DE" is Delaware,
+#: "Berlin, DE" is Germany). "City, Region, XX" does say, and so does a code
+#: that is not on this list.
+_US_POSTAL_CODES = frozenset(
+    "al ak az ar ca co ct de dc fl ga hi id il in ia ks ky la me md ma mi mn "
+    "ms mo mt ne nv nh nj nm ny nc nd oh ok or pa pr ri sc sd tn tx ut vt va "
+    "vi wa wv wi wy".split()
+)
+
+#: The last token of a place string, when it is a two-letter code.
+_CODE_AT_END = re.compile(r"(?:^|,\s*)([A-Za-z]{2})\s*$")
+
+
+def _expand_country_code(loc: str) -> str:
+    """Spell a trailing ISO country code out: "San Francisco, CA, US" becomes
+    "San Francisco, CA, United States".
+
+    Applied before a place is read, so that "City, Region, CC" boards are not
+    silently filed as "no restriction stated" (which reads as "not a bar", the
+    wrong way to be wrong). The row keeps the ad's own wording: this is only
+    what the patterns below see.
+    """
+    match = _CODE_AT_END.search(loc)
+    if not match:
+        return loc
+    code = match.group(1).lower()
+    name = _COUNTRY_CODES.get(code)
+    if not name:
+        return loc
+    if code in _US_POSTAL_CODES and loc.rsplit("|", 1)[-1].count(",") < 2:
+        return loc
+    head = loc[:match.start(1)].rstrip().rstrip(",").strip()
+    return f"{head}, {name}" if head else name
 
 #: Conservative description-only signals: strong obligation wording only, so a
 #: passing mention of the US in a long job description never flips a scope.
@@ -144,27 +211,31 @@ def classify(location: str | None, description: str | None = None) -> tuple[str,
     """
     loc = " ".join((location or "").split())
     desc = " ".join((description or "").split())
+    # What the patterns below read: the place as written, with a trailing ISO
+    # country code spelled out (see _expand_country_code). `loc` - the wording
+    # the ad itself carries - is what comes back as evidence.
+    readable = _expand_country_code(loc)
 
-    if loc:
-        match = _WORLDWIDE.search(loc)
-        if match and not _REGION.search(loc):
+    if readable:
+        match = _WORLDWIDE.search(readable)
+        if match and not _REGION.search(readable):
             return WORLDWIDE, loc
     if desc:
         match = _DESC_WORLDWIDE.search(desc)
         if match:
             return WORLDWIDE, match.group(0)
 
-    match = _US_ONLY.search(loc) or _DESC_US_ONLY.search(desc)
+    in_location = _US_ONLY.search(readable)
+    match = in_location or _DESC_US_ONLY.search(desc)
     if match:
-        phrase = match.group(0)
-        return US_ONLY, loc if phrase.lower() in loc.lower() else phrase
+        return US_ONLY, loc if in_location else match.group(0)
 
     # A bare state name ("Kansas") is a US-only location; a list that also names
     # another region is a list to check, not a bar.
-    if loc and _US_PLACE.search(loc) and not _REGION.search(loc):
+    if readable and _US_PLACE.search(readable) and not _REGION.search(readable):
         return US_ONLY, loc
 
-    if loc and _REGION.search(loc):
+    if readable and _REGION.search(readable):
         return REGION_GATED, loc
 
     return UNKNOWN, loc or None
@@ -248,6 +319,23 @@ _CASES: list[tuple[str | None, str | None, str]] = [
     ("Sub-Saharan Africa", None, REGION_GATED),
     ("Lagos, Nigeria", None, REGION_GATED),
     ("Lagos", None, REGION_GATED),      # the candidate's own city
+    # boards that state a place as "City, Region, CC" (Work at a Startup writes
+    # "San Francisco, CA, US"). The code ends the string, so it is a country and
+    # the place becomes legible; mid-string it is a subdivision and is left be.
+    ("San Francisco, CA, US", None, US_ONLY),
+    ("US", None, US_ONLY),
+    ("CA, US | San Francisco, CA, US", None, US_ONLY),
+    ("NY, US | New York, NY, US", None, US_ONLY),
+    ("Bengaluru, KA, IN", None, REGION_GATED),
+    ("London, England, GB", None, REGION_GATED),
+    ("Berlin, Berlin, DE", None, REGION_GATED),
+    ("Sydney, NSW, AU", None, REGION_GATED),
+    ("Lagos, LA, NG", None, REGION_GATED),
+    ("Toronto, ON, CA", None, REGION_GATED),
+    ("Remote, ZM", None, REGION_GATED),  # would read as no restriction without this
+    ("NY, US | New York, NY, US | England, GB | London, England, GB", None, REGION_GATED),
+    ("CA", None, UNKNOWN),               # a code on its own is still ambiguous
+    ("Somewhere, QQ", None, UNKNOWN),    # an unknown code is left as written
 ]
 
 #: (scope, evidence, rank) - the order the digest triages leads by.

@@ -266,6 +266,26 @@
       }
     },
     {
+      "name": "Work at a Startup",
+      "kind": "job_board",
+      "url": "https://www.workatastartup.com/companies?demographic=any&hasEquity=any&hasSalary=any&industry=any&interviewProcess=any&jobType=fulltime&layout=list-compact&role=eng&sortBy=created_desc&tab=any&usVisaNotRequired=true",
+      "enabled": 1,
+      "notes": "Y Combinator's startup jobs, engineering, full time, no US visa required. There is no feed (/jobs.rss and /jobs.json answer 406, /feed, /rss.xml and /sitemap.xml 404) and the pages serve only a 28-row sample, so the search is read from the site's own Algolia index through your signed-in Chrome (scanner/js/workatastartup_search.js, mode opencli_eval): the search credential is minted per page load and cannot be stored, and the credential the public pages mint is tag filtered to (none) and reads nothing. Ads arrive with their full description, so this board needs no detail fetch. An expired YC session fails the run saying so, instead of reporting an empty board.",
+      "scan_strategy": "html",
+      "scan_config": {
+        "mode": "opencli_eval",
+        "profile": "g3pxjge8",
+        "session": "jobfit",
+        // YOUR saved search: what the adapter sends to the index, expressed the
+        // way the site's own filter bar does. Signed out, this URL redirects
+        // home - which is how an expired session shows up.
+        "url": "https://www.workatastartup.com/companies?demographic=any&hasEquity=any&hasSalary=any&industry=any&interviewProcess=any&jobType=fulltime&layout=list-compact&role=eng&sortBy=created_desc&tab=any&usVisaNotRequired=true",
+        "js_file": "workatastartup_search.js",
+        "tries": 6,
+        "wait_ms": 3000
+      }
+    },
+    {
       "name": "Manual",
       "kind": "other",
       "url": null,

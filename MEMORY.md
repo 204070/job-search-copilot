@@ -274,7 +274,8 @@
   "USA timezones"/"US hours"/"US clients" are overlap wording, NOT bars
   (profile accepts ET afternoons). A list mixing regions ("Europe, USA, Canada,
   APAC") is `region_gated`, not `us_only`. Bare US state names ("Kansas") DO
-  count; two-letter codes are skipped (DE/IN/CA collide with countries).
+  count; a two-letter code is read only where the string says which it means
+  (see the entry below).
 - **A `region_gated` list can include you or exclude you (18/10).** The tag
   alone cannot say which, so triage reads the evidence phrase: EMEA, MEA and
   Africa name a region that includes West Africa and sort *above* `unknown`;
@@ -283,6 +284,22 @@
   missing, so rows like "Remote, AMER" read as "no restriction stated".
   `covers_home()` + `scope_rank()` are the single home for that vocabulary; the
   scanner report and the digest both call them, so they cannot drift.
+- **A "City, Region, CC" place is readable, and reading it moved 570 rows
+  (19/10).** Work at a Startup writes "San Francisco, CA, US" and "Bengaluru,
+  KA, IN". The classifier knew only full state names and ", USA", so 649 of that
+  board's 759 rows read `unknown`, which ranks as "not a bar" and sorted a US
+  city job above a Europe-gated one. `_expand_country_code` in
+  `scanner/eligibility.py` now spells a trailing two-letter code out to the name
+  the patterns already know, but only where the string says which it means:
+  three parts ("Berlin, Berlin, DE") is a country, and a code that is not also a
+  US postal code is one wherever it appears ("Remote, ZM", "TW"). "Chesapeake,
+  DE" and a bare "CA" are left exactly as written, because that string is
+  Delaware/California as easily as Germany/Canada, and a coin flip between
+  `us_only` and `region_gated` is worse than `unknown`. The rows now split 406
+  `us_only` / 260 `region_gated` / 92 `unknown`, and
+  `python3 -m scanner.tools.classify` re-tagged 570 rows pool-wide from the same
+  reader. The selftest grew to 69 cases and covers the left-alone shapes
+  explicitly, so a later widening has to argue with them.
 - **A bookmark stub can make a real job unscorable (18/10).** One X bookmark
   carried three role titles, an address and a close date and nothing else: score
   0, scope `unknown`, while the employer's own ad named the stack, the level and
@@ -348,8 +365,24 @@
   previously title-only), and HiringCafe (browser-read, above). All four are
   listed in `db/seeds/boards.jsonc`; a fresh clone gets them from
   `python3 -m db.seed`.
-- **`opencli` must be on PATH for the scanner's bridge modes (HiringCafe, X
-  Bookmarks).** Under cron it reported "not installed" for months: cron's PATH
+- **Work at a Startup has no feed; its search is Algolia behind a per-page
+  credential (19/10).** `/jobs.rss` and `/jobs.json` answer 406, `/feed`,
+  `/rss.xml` and `/sitemap.xml` answer 404, and the pages that do render a list
+  serve a 28-row sample that ignores the query string completely (same 28 ids
+  with the filters, and again for `page=2`). The search itself is
+  `WaaSPublicCompanyJob_production` on Algolia, and its key is minted per page
+  load into `window.AlgoliaOpts` (valid about a day) from
+  `/jobs_algolia_credential.json` — so it cannot be stored, and plain HTTP cannot
+  do this at all: the credential the public pages mint is tag filtered to
+  `(none)` and answers 0 hits to every query, while the signed-in one is tagged
+  `jobs_applicant`. Read through the Bridge like HiringCafe
+  (`scanner/js/workatastartup_search.js`, one tab, ~12 s); the index carries the
+  whole advert inline, so there is no detail fetch. **An expired session throws
+  with that stated** (the page then has no credential, or the public `(none)`
+  one) and lands in the run's `### Errors`, deliberately: a silent "0 fetched"
+  would read as "no jobs today", which is the wrong way to be wrong.
+- **`opencli` must be on PATH for the scanner's bridge modes (HiringCafe, Work
+  at a Startup, X Bookmarks).** Under cron it reported "not installed" for months: cron's PATH
   is minimal, so the X-bookmark board was attempted daily and never ran.
   `cron/daily_scan.sh` exports `~/.local/share/vite-plus/bin` (opencli and node
   live there; no interpreter, so prepending it changes nothing else). Off cron,
@@ -411,12 +444,15 @@
   command is an action that never gets recorded. The mechanism, stated
   concretely: `_docs/jobs-db.md`, "The follow-up reminder".
 - **A salary figure belongs to the person and can move an order of magnitude at
-  submit time (18/10).** The prepared form carried the bank's
-  $180,000-$220,000; they replaced it with $35,000-$50,000 on their own reading
-  that the role is remote, and submitted. The process worked (the figure was
-  handed over as theirs to confirm), and the lesson is what to keep: the sent
-  figure goes into the instance ledger, the canonical stays a *stance*, and the
-  row then reads `revised`, which is honest rather than broken. Still open, and
-  worth asking again: whether remote roles are priced against the local market
-  or against the employer's own published band, because a US employer's band for
-  comparable work sat an order of magnitude above what went out.
+  submit time (18/10).** The prepared form carried the bank's figure; they
+  replaced it with one an order of magnitude lower on their own reading that the
+  role was remote, and submitted. The process worked (the figure was handed over
+  as theirs to confirm), and the lesson is what to keep: the sent figure goes
+  into the instance ledger, the canonical stays a *stance*, and the row then
+  reads `revised`, which is honest rather than broken. **Settled 19/10, so this
+  is no longer an open question:** the stance lives in `artifacts/profile.jsonc`
+  (`compensation`) — an employer's published band when there is one (the low end
+  is fine), a default figure there for a fully remote role open internationally,
+  case by case otherwise. The figures themselves are not repeated in this file,
+  because the repo is public and a figure is the user's; `compensation` in the
+  profile and the question bank's `compensation_expectation` are where they live.

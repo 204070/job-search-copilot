@@ -38,6 +38,12 @@ from, and what is ambiguous. Then they review and submit.
 - Run `lookup` once per non-file label before filling anything. This is where
   vocabulary differences get caught: the form's "Compensation (USD)" is the
   bank's `compensation_expectation`.
+- A pay field is answered from `artifacts/profile.jsonc` (`compensation`), and
+  the rule is short: the employer's own published band when the ad carries one
+  (the low end is fine), the default figure there for a fully remote role open
+  internationally, and case by case otherwise. Flag the figure in the handover
+  either way, because the number is the user's to change at review, and write
+  what actually went out into the instance ledger.
 - If the tab is `about:blank` or the form is gone, reopen and refill from
   scratch — losing state is normal, not an emergency. Work only in your tab:
   never close, navigate, or disturb anything else in their browser.

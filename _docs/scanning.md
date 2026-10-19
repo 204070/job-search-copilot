@@ -56,8 +56,9 @@ Active sources: WWR (three category feeds: programming, full-stack, devops),
 Himalayas (RSS), Real Work From Anywhere (RSS), Jobspresso (dev-category RSS),
 JS Guru Jobs and JavaScript Jobs (server-rendered HTML lists, with the posting's
 own page read for new rows), Jobicy (mapped API), Remotive + RemoteOK (APIs),
-Indeed/LinkedIn/ZipRecruiter (JobSpy), HiringCafe (browser-read search, needs
-Chrome), X Bookmarks (OpenCLI/Playwright, your own session — `on_demand`). ZipRecruiter currently returns 403 from this network;
+Indeed/LinkedIn/ZipRecruiter (JobSpy), HiringCafe and Work at a Startup
+(browser-read searches, need Chrome), X Bookmarks (OpenCLI/Playwright, your own
+session — `on_demand`). ZipRecruiter currently returns 403 from this network;
 LinkedIn rate-limits. 6 `html` boards stay pending — reconnaissance status for
 each lives in `boards.notes` (migration 0009); paywalled/dormant boards
 (Remote4Africa, RemoteAfrica, Crossover) are `manual`, Cleverjobs is disabled.
@@ -129,6 +130,38 @@ shapes: `_docs/tooling.md`.
   volume is not worth it.
 
 
+## Work at a Startup (`mode: opencli_eval`, no detail fetch)
+
+Y Combinator's own board has no feed and no list worth parsing. Checked
+19/10/2026, cheapest path first: `/jobs.rss` and `/jobs.json` answer 406 (the
+Rails route has no rss or json format), `/feed`, `/rss.xml` and `/sitemap.xml`
+answer 404, `robots.txt` is empty, and the alternate link on
+`ycombinator.com/jobs` is the blog feed. The pages that do render a list serve a
+28-row sample into their Inertia payload and ignore the query string completely
+(the same 28 ids with the filters, and again for `page=2`).
+
+What the search actually is: Algolia, index `WaaSPublicCompanyJob_production`.
+Each page load mints a search credential into `window.AlgoliaOpts` (renewed from
+`/jobs_algolia_credential.json` when it lapses, `valid_until` about a day out),
+so it cannot be stored, and plain HTTP cannot do this at all: the credential the
+public pages mint is tag filtered to `(none)` and answers 0 hits to every query,
+while the signed-in one is tagged `jobs_applicant`. So this board is read the way
+HiringCafe and X Bookmarks are, through the Bridge, out of your logged-in
+Chrome: `scanner/js/workatastartup_search.js` opens `scan_config.url`, asks the
+page for that credential, queries the index itself and returns the rows.
+
+- 759 ads answered the saved filter on 19/10/2026 (engineering, full time, no US
+  visa required): 15 s cold, 12 s warm, 8 requests at 100 rows each. The filter
+  string in the adapter is the one the site itself sends for that URL.
+- The index stores the whole advert inline (2-4 KB), so this board needs no
+  `details` fetch and every row scores on its description.
+- `url` is the public posting on `ycombinator.com` (Algolia's `search_path`);
+  the WaS page `/jobs/<id>` rides in metadata.
+- **An expired session is an error, not an empty board.** Signed out, the page
+  carries either no credentials or the public `(none)` ones, and the adapter
+  throws saying which, so the run's `### Errors` section and `logs/leads/` name
+  it instead of reporting "0 fetched". Sign in at workatastartup.com, rescan.
+
 
 ## Region scope: can you actually take this job?
 
@@ -172,6 +205,18 @@ abbreviations (`AMER`, `EMEA`, `APAC`, `MEA`) are location strings in their own
 right; a missing one used to read as "no restriction stated" rather than as a
 list. `covers_home()` is the only place that vocabulary lives, and
 `python3 -m scanner.eligibility` checks it alongside the tags.
+
+Boards also write a place as "City, Region, CC" ("San Francisco, CA, US",
+"Bengaluru, KA, IN", "London, England, GB"). A trailing two-letter code is read
+as a country and spelled out to the name the patterns know, but only where the
+string says which it means: with three parts ("Berlin, Berlin, DE") the code is
+a country, and a code that is not also a US postal code is one wherever it
+appears ("Remote, ZM", "TW"). "Chesapeake, DE" is left alone, because that
+string is Delaware exactly as easily as Germany, and a bare "CA" is left alone
+for the same reason. Until 19/10/2026 no code was read at all, which filed 649
+of the 759 Work at a Startup rows as `unknown`: they now split 406 `us_only` /
+260 `region_gated` / 92 `unknown`, and the re-tag moved 570 rows across the
+whole pool (`python3 -m scanner.tools.classify`).
 
 ```bash
 python3 -m scanner.tools.classify              # re-tag every job, print counts
