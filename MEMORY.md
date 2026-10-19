@@ -381,6 +381,19 @@
   with that stated** (the page then has no credential, or the public `(none)`
   one) and lands in the run's `### Errors`, deliberately: a silent "0 fetched"
   would read as "no jobs today", which is the wrong way to be wrong.
+- **The search is narrowed to what can actually be taken (19/10).** The base
+  filter (engineering, full time, no US visa required) returned 759 ads, of
+  which 531 were on-site in a US or Indian office: rows the user, in Lagos and
+  going after remote work, could never action. Adding `(remote:yes OR
+  remote:only)` to the Algolia filter cut it to 228 server-side, and an
+  18-month window cut that to 116. The age window is needed because WaS serves
+  ads from 2018 onwards and has no closed or expired field to read: its
+  "archived" wording is applicant vocabulary, present identically on a 2018 ad
+  and a 2026 one (checked against the raw page). The window is applied in the
+  adapter, not the query, because Algolia cannot compare a date string and the
+  index carries no numeric timestamp. Rows already stored stay stored: the
+  store keeps status, so narrowing a search never deletes old rows, and
+  `python3 -m scanner.tools.classify` still tags them if they are read again.
 - **`opencli` must be on PATH for the scanner's bridge modes (HiringCafe, Work
   at a Startup, X Bookmarks).** Under cron it reported "not installed" for months: cron's PATH
   is minimal, so the X-bookmark board was attempted daily and never ran.

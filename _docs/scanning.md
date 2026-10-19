@@ -150,9 +150,15 @@ HiringCafe and X Bookmarks are, through the Bridge, out of your logged-in
 Chrome: `scanner/js/workatastartup_search.js` opens `scan_config.url`, asks the
 page for that credential, queries the index itself and returns the rows.
 
-- 759 ads answered the saved filter on 19/10/2026 (engineering, full time, no US
-  visa required): 15 s cold, 12 s warm, 8 requests at 100 rows each. The filter
-  string in the adapter is the one the site itself sends for that URL.
+- The search is the site's own filter bar (engineering, full time, no US visa
+  required) plus two clauses the bar has no control for, both in the adapter and
+  both measured on 19/10/2026: **remote-capable ads only** (228 of the 759) and
+  **posted within about 18 months** (116 of the 228; the remote set is 76 ads
+  from 2026, 53 from 2025, and 105 older). An ad that says the work is on site in
+  Bengaluru or San Francisco is not a job someone in Lagos can take, and WaS
+  serves ads from 2018 onwards with no closed or expired field (its own
+  "archived" wording is applicant vocabulary, identical on every ad), so age is
+  the only liveness signal there is. 116 rows in 3 requests, 10 s warm.
 - The index stores the whole advert inline (2-4 KB), so this board needs no
   `details` fetch and every row scores on its description.
 - `url` is the public posting on `ycombinator.com` (Algolia's `search_path`);

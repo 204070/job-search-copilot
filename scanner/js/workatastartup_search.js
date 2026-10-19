@@ -54,17 +54,32 @@
   }
 
   const INDEX = "WaaSPublicCompanyJob_production";
-  // Exactly what the site itself sends for the saved search in scan_config.url
-  // (taken from its own request body): engineering roles, full time, and only
-  // ads that do not require a US visa.
+  // The search, and why it is this one. The first three clauses are the base
+  // the site's own filter bar produces (engineering roles, full time, and only
+  // ads that do not require a US visa). The last one the filter bar has no
+  // control for:
+  //   remote yes/only   the employer says the job can be done remotely. An ad
+  //                     that says the work is on site in Bengaluru or San
+  //                     Francisco is not a job the candidate (in Lagos, going
+  //                     after remote work) can take, and 531 of the 759 ads the
+  //                     base filter returns are exactly that: US or India
+  //                     offices with no remote option. Reading them means
+  //                     storing 500 rows that no one can action.
+  // Measured 19/10/2026: 759 ads base, 228 with remote yes/only.
   const FILTERS = '(role:eng) AND (us_visa_required:none OR us_visa_required:possible) '
-    + 'AND (job_type:"fulltime")';
+    + 'AND (job_type:"fulltime") AND (remote:yes OR remote:only)';
+  // WaS serves ads from 2018 onwards live and without any closed/expired field
+  // (its own "archived" wording is applicant vocabulary, identical on every ad),
+  // so age is the only liveness signal there is. A year and a half is generous
+  // for a startup ad and still drops the seven-year tail: the remote set is 76
+  // ads from 2026, 53 from 2025, and 105 older than that.
+  const MAX_AGE_DAYS = 548;
   const FIELDS = ["id", "title", "description", "created_at", "search_path",
     "locations_for_search", "remote", "us_visa_required", "job_type", "eng_type",
     "skills", "min_experience", "has_salary", "has_equity", "company_name",
     "company_id", "company_website"];
   const PER_PAGE = 100;
-  const MAX_PAGES = 12;  // 758 ads answered this filter on 19/10/2026
+  const MAX_PAGES = 6;  // 228 ads answered this filter on 19/10/2026
 
   const endpoint = "https://" + String(opts.app).toLowerCase()
     + "-dsn.algolia.net/1/indexes/*/queries";
@@ -130,5 +145,13 @@
     }
     if (page + 1 >= (result.nbPages || 1)) break;
   }
-  return JSON.stringify(rows);
+
+  // Keep the window, newest first. Both are done here rather than in the query
+  // because Algolia cannot compare a date string and the index has no numeric
+  // timestamp to filter on. Rows without a date are kept: the ad exists, and
+  // the store records what it says.
+  const cutoff = new Date(Date.now() - MAX_AGE_DAYS * 86400000).toISOString();
+  const fresh = rows.filter(r => !r.posted_at || r.posted_at >= cutoff);
+  fresh.sort((a, b) => String(b.posted_at).localeCompare(String(a.posted_at)));
+  return JSON.stringify(fresh);
 })()

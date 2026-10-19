@@ -268,18 +268,19 @@
     {
       "name": "Work at a Startup",
       "kind": "job_board",
-      "url": "https://www.workatastartup.com/companies?demographic=any&hasEquity=any&hasSalary=any&industry=any&interviewProcess=any&jobType=fulltime&layout=list-compact&role=eng&sortBy=created_desc&tab=any&usVisaNotRequired=true",
+      "url": "https://www.workatastartup.com/jobs?role=eng&jobType=fulltime&usVisaNotRequired=true&sortBy=created_desc",
       "enabled": 1,
-      "notes": "Y Combinator's startup jobs, engineering, full time, no US visa required. There is no feed (/jobs.rss and /jobs.json answer 406, /feed, /rss.xml and /sitemap.xml 404) and the pages serve only a 28-row sample, so the search is read from the site's own Algolia index through your signed-in Chrome (scanner/js/workatastartup_search.js, mode opencli_eval): the search credential is minted per page load and cannot be stored, and the credential the public pages mint is tag filtered to (none) and reads nothing. Ads arrive with their full description, so this board needs no detail fetch. An expired YC session fails the run saying so, instead of reporting an empty board.",
+      "notes": "Y Combinator's startup jobs: engineering, full time, no US visa required, remote-capable, posted within about 18 months. There is no feed (/jobs.rss and /jobs.json answer 406, /feed, /rss.xml and /sitemap.xml 404) and the pages serve only a 28-row sample, so the search is read from the site's own Algolia index through your signed-in Chrome (scanner/js/workatastartup_search.js, mode opencli_eval): the search credential is minted per page load and cannot be stored, and the credential the public pages mint is tag filtered to (none) and reads nothing. The base filter is the site's own filter bar; remote-only and the age window are added in the adapter, because the filter bar has no control for either and because WaS serves ads from 2018 onwards with no closed/expired field. Ads arrive with their full description, so this board needs no detail fetch. An expired YC session fails the run saying so, instead of reporting an empty board.",
       "scan_strategy": "html",
       "scan_config": {
         "mode": "opencli_eval",
         "profile": "g3pxjge8",
         "session": "jobfit",
-        // YOUR saved search: what the adapter sends to the index, expressed the
-        // way the site's own filter bar does. Signed out, this URL redirects
-        // home - which is how an expired session shows up.
-        "url": "https://www.workatastartup.com/companies?demographic=any&hasEquity=any&hasSalary=any&industry=any&interviewProcess=any&jobType=fulltime&layout=list-compact&role=eng&sortBy=created_desc&tab=any&usVisaNotRequired=true",
+        // The site's own filter bar, as a URL: this is the base of the search
+        // the adapter sends to the index. The adapter adds two things the bar
+        // cannot express (remote-capable ads only, and an 18-month window);
+        // both are measured and explained at the top of the adapter.
+        "url": "https://www.workatastartup.com/jobs?role=eng&jobType=fulltime&usVisaNotRequired=true&sortBy=created_desc",
         "js_file": "workatastartup_search.js",
         "tries": 6,
         "wait_ms": 3000
