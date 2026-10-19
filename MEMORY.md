@@ -84,6 +84,19 @@
 
 ## Learnings (conversion, content, what works)
 
+- **A board's `Remote` is not a location: read the eligibility sentence (19/10).**
+  Three employers read off their own ATS this sitting all publish the structured
+  value `Remote`, and the ad text then narrowed it three different ways: one
+  stated its own country list ("we're only open to candidates based in the US, EU
+  and UK"), one was really gated to two countries in central Europe once its
+  board was read, and one sat beside a third party's `USA Only` tag while its own
+  board said nothing at all. The rule already learned for aggregator rows applies
+  to ATS fields too: `Remote` means "not in an office", not "open to you". Read
+  the ad's own eligibility sentence before ranking a row, and prefer a field that
+  carries a region (`Home based - Worldwide`, `Remote - Global`) over one that
+  carries none. Same sitting, the well-known employers in the high-score band
+  resolved to US-only or a named short list, so a widened net is still mostly a
+  net of US roles; say so rather than implying otherwise.
 - **A pure-function selftest cannot see a broken query (18/10).** Section 1 of
   the digest was rewritten to compare an event's `from_status` with its
   `to_status`, and it crashed the entire build the first time a status event
