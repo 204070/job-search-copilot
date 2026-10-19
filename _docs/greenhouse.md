@@ -72,6 +72,37 @@ to one form — never canonical; each posting's lists differ.
   first, and read the previously filled field back afterwards.
 - "Toggle flyout" button clicks do nothing; focus/type/keys opens the menu.
 
+## The newer board version: `Country*` is the phone dial code (19/10/2026)
+
+Validated on gh_jid 5389088004 (Alpaca). This board renders in a "remix" build
+where two field names mislead:
+
+- **`#country`, labelled `Country*`, is the PHONE dial-code select**, not a
+  country-of-residence question. Its options carry the dial code
+  (`Nigeria +234`, option id `react-select-country-option-158`), and once
+  committed the select displays just `+234`. Read the *option text* before
+  answering, and never read `input.value` (the react-select search box stays
+  empty): read `[class*=single-value]` inside
+  `closest("[class*=select__value-container]")`, as usual.
+- **`#candidate-location`, labelled `Location (City)*`, is the location
+  question.** The board's `location_questions` carry `Location`, `Latitude` and
+  `Longitude`, and the widget fills the coordinates itself on submit, so no
+  lat/long input has to be written by hand. Typing `Lagos` returned exactly one
+  wanted option (`Lagos, Nigeria`, first in a list otherwise full of Lagos in
+  Chile, Mexico, Portugal and Greece), and `aria-activedescendant` was already
+  on it, so one `keys Enter` committed it. Press `keys Escape` afterwards: the
+  menu stayed `aria-expanded="true"` after the commit.
+- Field ids here are the advertised ones (`#first_name`, `#email`,
+  `#question_12229452004`), so a selector can be taken straight from the board
+  API's `questions` list (`?questions=true`) before the page is even open.
+- An `#iti-0__search-input` exists in the DOM even when no visible intl-tel
+  dropdown does, so a probe for `.iti__selected-country` can report zero while
+  the widget is present. Check for the search input instead.
+- **After the base64 embed, Greenhouse consumes the input.** `#resume` is gone
+  from the DOM afterwards (React keeps the file in its own state) and the
+  `Resume/CV` zone shows the filename. That display is the success signal
+  documented above; do not read the missing element as a lost upload.
+
 ## Adapting profile facts (worked example: gh_jid 6188234004, 17/10/2026)
 
 - Country of legal residence was a curated 16-country list +

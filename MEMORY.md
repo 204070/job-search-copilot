@@ -267,6 +267,15 @@
   with `artifacts/scripts/embed_resume.sh <pdf> '#_systemfield_resume'` (that
   script's default selector is Greenhouse's `#resume`, so the Ashby id must be
   passed), verified afterwards by reading the byte size back off `input.files`.
+- **Greenhouse's newer board mislabels two fields (19/10, application #9).**
+  `#country`, labelled `Country*`, is the phone dial-code select (its options
+  read "Nigeria +234"), not a country-of-residence question, and
+  `#candidate-location`, labelled `Location (City)*`, is the location question
+  whose widget fills the hidden Latitude/Longitude itself. After the base64
+  embed, Greenhouse removes `input#resume` from the DOM and shows the filename
+  in the Resume/CV zone, which is the success signal. Field ids match the ones
+  the board API advertises (`?questions=true`), so the field list can be read
+  before the page is opened. Details: `_docs/greenhouse.md`.
 - **Verify eligibility on the EMPLOYER's page, not the board's copy (18/10).**
   A Senior Full Stack role read "anywhere in the world (UTC-4..UTC+4)" on a
   remote board and the scanner tagged it `worldwide`, but the employer's own
