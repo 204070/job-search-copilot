@@ -102,6 +102,13 @@ where two field names mislead:
   from the DOM afterwards (React keeps the file in its own state) and the
   `Resume/CV` zone shows the filename. That display is the success signal
   documented above; do not read the missing element as a lost upload.
+- The board ends in a `Voluntary Self-Identification` block (`#gender`,
+  `#hispanic_ethnicity`, `#race`, `#veteran_status`, plus a disability select on
+  some employers). Answer it from `artifacts/profile.jsonc`
+  (`self_identification`) rather than leaving it blank; the runbook explains
+  why. Read the committed options back off the page, since the wording differs
+  between employers ("I don't wish to answer" against "Decline To Self
+  Identify").
 
 ## Adapting profile facts (worked example: gh_jid 6188234004, 17/10/2026)
 

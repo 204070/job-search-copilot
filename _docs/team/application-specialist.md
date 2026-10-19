@@ -44,6 +44,17 @@ from, and what is ambiguous. Then they review and submit.
   internationally, and case by case otherwise. Flag the figure in the handover
   either way, because the number is the user's to change at review, and write
   what actually went out into the instance ledger.
+- **Answer the voluntary self-identification block; do not leave it blank.** The
+  EEOC-style questions on US forms (gender, Hispanic/Latino, race, veteran
+  status, and any disability question) are answered from
+  `artifacts/profile.jsonc` (`self_identification`). Leaving them empty was the
+  wrong call on application #9: the user filled them themselves and asked for
+  them to be recorded, which makes filling them the standing behaviour rather
+  than a courtesy. They are voluntary answers, so they are never deduced: if a
+  value is missing there, ask, and record the answer before the form is handed
+  over. The values are personal facts, so they stay in the private files and the
+  DB; the committed docs and MEMORY say only that the block is filled from the
+  profile, never what it contains.
 - If the tab is `about:blank` or the form is gone, reopen and refill from
   scratch — losing state is normal, not an emergency. Work only in your tab:
   never close, navigate, or disturb anything else in their browser.

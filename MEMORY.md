@@ -37,6 +37,11 @@
   not just the tag: worldwide → covering region → unknown → excluding list →
   us_only. Detail: `_docs/scanning.md` → "Region scope".
 - **Identity facts:** `artifacts/profile.jsonc` — read before drafting/filling.
+  It also carries `self_identification`, the voluntary EEOC answers (gender,
+  Hispanic/Latino, race, veteran status): **answer that block, do not leave it
+  blank** (learned on application #9, where the user filled it after the agent
+  left it empty). The values live only in the private files and the DB; the
+  committed docs state the practice, never the contents.
 - **Question bank:** `db/jobs.db` (`questions` + `question_instances`) behind
   `python3 -m db.tools.questions` — `lookup` before filling, `record` at
   handover, `retire` to set an answer aside; an answer's state (`unsent` /
