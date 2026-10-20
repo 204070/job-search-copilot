@@ -71,13 +71,31 @@ curl -s 'https://api.lever.co/v0/postings/<slug>/<posting-uuid>?mode=json'  # on
      actually submits**, and the input's `required` flag alone will not carry
      the city.
   3. Click another field to force the blur, then read both back. If both
-     survive, the pair is committed.
-- **The resume auto-read rewrites fields after the upload, hidden ones
-  included.** Attaching the file made Lever parse it and set
-  `#selected-location` to `{"name":""}`, an unresolved object, while the
-  visible input still read `Lagos, NGA`. The fill order that avoids the repair:
-  attach the resume first, resolve the location last, then read every field
-  back. The resume zone shows the parsed filename plus `Success!`.
+     survive, the pair is committed. Because this is a direct assignment, do it
+     **after** the resume parse, or dispatch a `change` on both inputs first,
+     or the parse will overwrite the pair.
+- **The resume parse rewrites every field it recognises, and only `change`
+  protects a field.** Uploading a file fires `POST /parseResume`, and the reply
+  refills `org`, `phone`, `name`, `email`, `location`, `selectedLocation`, the
+  four `urls[...]` and `resumeStorageId`. `parseResume.js` skips a field only
+  when a real `change` or `paste` has marked it touched. `fill` fires `change`,
+  so filled fields survive. A value set by direct JS assignment does not, and
+  that is how the location came back as `{"name":""}` with the visible field
+  blanked. So either attach the resume first and fill afterwards, or mark each
+  hand-set field with a `change` event, then read everything back.
+- **`resumeStorageId` is the proof the file landed.** After a good upload it
+  holds a UUID; on a fresh page it is empty. Read it rather than trusting the
+  legend, whose `Success!` string sits in the markup from page load.
+  `.resume-upload-success` becoming visible is the real signal.
+- **Submit fails server-side when the captcha token is stale.** A filled form
+  that will not submit answers `There was an error verifying your application.
+  Please try again.` with no field highlighted. That string exists only in the
+  server response, so it is not field validation. `h-captcha-response` is empty
+  until the widget solves, and the token is short lived and single use, so a
+  page that sat open for a while fails even though every value is correct. The
+  repair that worked: reopen the apply URL in a fresh browser, refill, submit.
+  Practical guard: hand the filled page over at once, and tell the user to
+  solve and submit within a minute or two.
 - **A bracket in a field name needs a quoted selector.**
   `input[name="urls[LinkedIn]"]`, and the same for the `cards[...]` controls.
 - **hCaptcha ships on every Lever form** (two `newassets.hcaptcha.com` iframes).

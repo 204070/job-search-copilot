@@ -94,6 +94,9 @@ Short rules only. The worked cases live in the file each group points to.
 - A widget can search only on real keystrokes and clear itself on blur. Find its
   endpoint, set the visible field and the hidden field the form submits, and
   prove the pair survives a blur. → `_docs/lever.md`
+- Hand over a captcha-protected form at once. A stale token fails server-side
+  with no field highlighted, and the repair is a fresh page and a refill. →
+  `_docs/lever.md`
 - Verify the committed value, not the click. A control can report success and
   commit nothing. → `_docs/greenhouse.md`
 - Answer the voluntary self-identification block from `profile.jsonc`
