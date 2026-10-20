@@ -66,9 +66,21 @@ every time.
 - The question set varies by posting: a pay, sponsorship, notice-period or
   start-date field may or may not appear. Read the form, and do not import an
   answer from another posting because the employer is the same.
-- Plain `input type=text` / `textarea`, placeholder `Type here...`. No
-  react-select comboboxes, so the Greenhouse combobox recipe does not apply.
-  Yes/No are buttons, not a checkbox.
+- Plain `input type=text` / `textarea`, placeholder `Type here...`. Most
+  fields are this shape. Yes/No are buttons, not a checkbox.
+- **A type-ahead combobox can appear** (seen 20/10/2026 on a "How did you
+  hear about this role?" question): `role=combobox`, placeholder
+  `Start typing...`, a closed option list. It is strict: a typed value that
+  matches no option is cleared on blur, so the free-text answer dies and the
+  Greenhouse-style "name the board" pattern does not survive. Read the real
+  option list, take the form's catch-all when the fact has no exact match,
+  and prove the picked value survives a blur. The popup can read
+  `aria-expanded=true` with nothing rendered; typing filter text is the
+  deterministic way to reopen it. Click only a verified visible
+  `[role=option]` id (react-aria ids work through `[id="<the-id>"]`).
+- A free-text compensation field can carry the employer's published band as
+  a range; a numeric single-value field takes one number
+  (`_docs/workable.md`).
 - The resume input is `input[type=file]`; see Phase 5 for the attach method.
 
 ## Filling it in one pass
@@ -90,8 +102,15 @@ every time.
   `[aria-invalid=true]` or error nodes, submit enabled, and
   `textarea[name=g-recaptcha-response]` still empty (that one is the human's).
 - Questions to expect: a link to a code sample the person is proud of plus why,
-  an optional technical writing sample, and a free-text "how did you hear about
-  us" that takes the board which actually surfaced the posting.
+  an optional technical writing sample, and a "how did you hear about us"
+  question (free text or the combobox above) that takes the board which
+  actually surfaced the posting. Optional Pronouns and a free-text Timezone
+  (hint: "To help with scheduling") have also appeared.
+- **When the ad itself asks for a note** ("include a note ... tell us why you
+  are excited"), the optional "Anything else you think we should know?"
+  textarea IS that note: fill it. Draft it from the profile, name the
+  employer's product only when intake confirmed the user runs it, and say in
+  the handover when the posting is evergreen (no specific pod requisition).
 
 ## Free-text answers
 
