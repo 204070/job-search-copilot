@@ -155,7 +155,7 @@ page for that credential, queries the index itself and returns the rows.
   both measured on 19/10/2026: **remote-capable ads only** (228 of the 759) and
   **posted within about 18 months** (116 of the 228; the remote set is 76 ads
   from 2026, 53 from 2025, and 105 older). An ad that says the work is on site in
-  Bengaluru or San Francisco is not a job someone in Lagos can take, and WaS
+  one named city is not a job the applicant can take without relocating, and WaS
   serves ads from 2018 onwards with no closed or expired field (its own
   "archived" wording is applicant vocabulary, identical on every ad), so age is
   the only liveness signal there is. 116 rows in 3 requests, 10 s warm.
@@ -242,7 +242,7 @@ them apart, so the sort reads the evidence phrase as well
 | order | scope | why |
 |---|---|---|
 | 1 | `worldwide` | open to anyone |
-| 2 | `region_gated` naming a region you are in | EMEA, MEA, Africa, Nigeria: officially open to you |
+| 2 | `region_gated` naming the applicant's own region | EMEA, MEA, Africa, or the country itself: officially open to you |
 | 3 | `unknown` | states nothing, so not a bar, but not a promise either |
 | 4 | `region_gated` naming only other regions | Europe alone, the Americas, APAC, the Gulf: read the list |
 | 5 | `us_only` | the only real bar |
@@ -326,8 +326,9 @@ python3 -m scanner.tools.rescore            # re-derive match_score after the sc
     `\bterm\b`, so `rust` never hits `robust`. A legacy `field: "title"` entry
     still loads, as one more admit pattern. Two kinds of signal live in this
     list and are commented apart: stack terms (weight 3 is the verified core)
-    and location affinity (`nigeria`, `lagos`), because an advert that names
-    your country or city is telling you it will hire where you are.
+    and location affinity (the applicant's own country and city, from
+    `profile.jsonc` `location`), because an advert that names your country or
+    city is telling you it will hire where you are.
 - Score = 100 × matched weight / target, capped at 99, where `target` is the
   weight of the entries at or above `core_weight`. The target is the point: a
   posting naming the whole core tier scores 100, and adding another incidental

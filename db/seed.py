@@ -1,6 +1,7 @@
 """Sync curated boards config into the database (idempotent, safe by default).
 
     python3 -m db.seed                 # boards from db/seeds/boards.jsonc
+                                       # (or boards.example.jsonc, if no copy)
     python3 -m db.seed --prune         # also disable boards missing from config
     python3 -m db.seed --dry-run       # report what would change, write nothing
 
@@ -20,6 +21,24 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))  # repo root
 from db.connection import connect
 _BOARDS_FILE = Path(__file__).resolve().parent / "seeds" / "boards.jsonc"
 _COMMENT_LINE = re.compile(r"(?m)^\s*//.*$")
+
+
+def _boards_file() -> Path:
+    """Your boards config, or the committed template when it is absent.
+
+    `db/seeds/boards.jsonc` is gitignored, so a fresh clone holds only
+    `boards.example.jsonc`. Seeding from the template keeps one command
+    working; the note says how to make the copy.
+    """
+    path = _BOARDS_FILE
+    if path.exists():
+        return path
+    example = path.with_name(f"{path.stem}.example{path.suffix}")
+    if example.exists():
+        print(f"note: {path.name} not found, reading {example.name}; copy it to "
+              f"{path.name} to make it yours", file=sys.stderr)
+        return example
+    raise FileNotFoundError(f"{path} not found, and no {example.name} beside it")
 def _load_jsonc(path: Path) -> dict:
     return json.loads(_COMMENT_LINE.sub("", path.read_text(encoding="utf-8")))
 def _utc_now() -> str:
@@ -33,7 +52,7 @@ class SeedReport:
         return f"boards +{self.added} ~{self.updated} -{self.disabled}"
 def run_seeds(db_path=None, *, prune=False, dry_run=False) -> SeedReport:
     report = SeedReport()
-    boards = _load_jsonc(_BOARDS_FILE)["boards"]
+    boards = _load_jsonc(_boards_file())["boards"]
     seen = set()
     conn = connect(db_path)
     try:

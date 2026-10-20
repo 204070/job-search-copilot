@@ -117,9 +117,6 @@ _LOCATION_PAREN = re.compile(
 _LOCATION_WORD = re.compile(
     r"\b(remote|hybrid|on-?site|worldwide|anywhere|fully remote)\b", re.I
 )
-_LOCATION_PLACE = re.compile(
-    r"\b(Lagos|Abuja|Port Harcourt|Ibadan|Kano|Enugu|Nigeria)\b"
-)
 
 
 def looks_like_job(text: str, url: str | None = None) -> bool:
@@ -168,9 +165,6 @@ def extract_location(text: str) -> str | None:
     match = _LOCATION_PAREN.search(text)
     if match:
         return match.group("loc")
-    match = _LOCATION_PLACE.search(text)
-    if match:
-        return match.group(1)
     match = _LOCATION_WORD.search(text)
     if match:
         return match.group(1).capitalize()

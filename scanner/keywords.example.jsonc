@@ -1,0 +1,162 @@
+// Scoring config for the keyword matcher (scanner/keywords.py).
+//
+// THIS IS THE TEMPLATE. Copy it, then edit your copy:
+//
+//     cp scanner/keywords.example.jsonc scanner/keywords.jsonc
+//
+// Your copy is gitignored, so the terms you keep and the weights you tune stay
+// local. Until you make one, the scanner reads this example as it is.
+//
+// Two title rules decide whether a posting is scored at all:
+//
+//   title_admit    the title must match at least one of these regexes.
+//   title_exclude  any match vetoes the posting outright, so a "Support
+//                  Engineer" whose advert mentions everything below still
+//                  scores 0. Excludes are checked first, so they always win.
+//
+// Then: score = 100 x matched weight / target, capped at 99, where `target` is
+// the weight of the entries at or above `core_weight`. The point of a target is
+// that the long tail extends the scale instead of compressing it: adding
+// another incidental term must not lower everyone's score. Matching the whole
+// core tier is a full score. Weights: 3 = the strengths you would lead with,
+// 2 = real but supporting, 1 = incidental or side-project territory. Tune any
+// of it freely.
+//
+// Edits apply on the next scan. Stored match_score values stay as they were
+// until `python3 -m scanner.tools.rescore` re-derives them.
+{
+  "title_admit": [
+    "\\bengineer\\b",
+    "\\bengineering\\b",
+    "\\bdeveloper\\b",
+    "\\bprogrammer\\b",
+    "\\barchitect\\b",
+    "\\bsre\\b",
+    "\\bfull[- ]?stack\\b",
+    "\\bback[- ]?end\\b",
+    "\\bfront[- ]?end\\b",
+    // Management titles need their own patterns: the exclude half below keeps
+    // most `manager` titles out, so a target that is engineering management
+    // has to be admitted by name. Add yours here when you want them.
+    "\\bengineering manager\\b",
+    "\\bmanager,? (?:of )?engineering\\b"
+  ],
+  "title_exclude": [
+    // Roles that read as engineering but are not: a sales engineer writes
+    // proposals, a support engineer answers tickets. Name them, because their
+    // adverts otherwise name every technology you care about.
+    "sales engineer",
+    "support engineer",
+    "solutions engineer",
+    "solution engineer",
+    "customer engineer",
+    "field engineer",
+    "service desk",
+    "technical support",
+    "technical account",
+    "customer success",
+    "developer relations",
+    "developer advocate",
+    "devrel",
+    // Adjacent management that is not an engineering target.
+    "product manager",
+    "project manager",
+    "program manager",
+    "product owner",
+    "account manager",
+    "delivery manager",
+    "office manager",
+    "community manager",
+    "social media",
+    "scrum master",
+    "recruit",
+    // Above first-line management. Remove these lines if those roles are in
+    // scope for you.
+    "\\bdirector\\b",
+    "\\bvp\\b",
+    "head of",
+    "\\bchief\\b",
+    "\\bpresident\\b",
+    // Marketing, sales and the non-engineering half of a job board.
+    "marketing",
+    "\\bsales\\b",
+    "account executive",
+    "business development",
+    "partnerships",
+    "recruiter",
+    "talent",
+    "sourcer",
+    "designer",
+    // Mobile and low-code platforms are a different job. Keep the ones that
+    // would otherwise pass the admit half.
+    "react native",
+    "flutter",
+    "android",
+    "\\bios\\b",
+    "salesforce",
+    "servicenow",
+    "workday",
+    "sharepoint",
+    // Data and quality roles that name the same stack.
+    "data scientist",
+    "data analyst",
+    "business analyst",
+    "\\bqa\\b",
+    "quality assurance",
+    "test engineer",
+    "technical writer",
+    "documentation engineer",
+    "accountant",
+    "compliance officer"
+  ],
+  "core_weight": 3,
+  "keywords": [
+    // Weight 3: the tier you would lead with. Matching this tier is a full
+    // score, so it should hold what the CV and the interviews can defend.
+    { "term": "typescript", "weight": 3, "enabled": 1 },
+    { "term": "node", "weight": 3, "enabled": 1 },
+    { "term": "react", "weight": 3, "enabled": 1 },
+    { "term": "python", "weight": 3, "enabled": 1 },
+    { "term": "postgres", "weight": 3, "enabled": 1 },
+
+    // Weight 2: real, used, supporting.
+    { "term": "javascript", "weight": 2, "enabled": 1 },
+    { "term": "graphql", "weight": 2, "enabled": 1 },
+    { "term": "mongodb", "weight": 2, "enabled": 1 },
+    { "term": "redis", "weight": 2, "enabled": 1 },
+    { "term": "aws", "weight": 2, "enabled": 1 },
+    { "term": "docker", "weight": 2, "enabled": 1 },
+    { "term": "terraform", "weight": 2, "enabled": 1 },
+    { "term": "github actions", "weight": 2, "enabled": 1 },
+    { "term": "next.js", "weight": 2, "enabled": 1, "pattern": "next[. ]?js" },
+    // One entry can cover a family. `pattern` replaces the plain word-boundary
+    // form, which is what makes alternations possible.
+    { "term": "ai", "weight": 2, "enabled": 1,
+      "pattern": "\\bai\\b|artificial intelligence|generative ai|\\bgenai\\b" },
+    { "term": "llm", "weight": 2, "enabled": 1,
+      "pattern": "\\bllms?\\b|large language models?" },
+    { "term": "rag", "weight": 2, "enabled": 1,
+      "pattern": "\\brag\\b|retrieval[- ]augmented" },
+
+    // Location affinity, not stack. A posting that names your country or your
+    // city is telling you it will hire where you are, which is worth knowing
+    // in the score as well as in `region_scope`. Add your own, for example:
+    // { "term": "portugal", "weight": 2, "enabled": 1 },
+    // { "term": "lisbon", "weight": 2, "enabled": 1 },
+
+    // Weight 1: incidental, or a technology you can hold a conversation about
+    // without having run it in production.
+    { "term": "rust", "weight": 1, "enabled": 1 },
+    { "term": "golang", "weight": 1, "enabled": 1 },
+    { "term": "java", "weight": 1, "enabled": 1 },
+    { "term": "dotnet group", "weight": 1, "enabled": 1, "pattern": "c#|\\.net" },
+    { "term": "kubernetes", "weight": 1, "enabled": 1 },
+    { "term": "kafka", "weight": 1, "enabled": 1 },
+    { "term": "grafana", "weight": 1, "enabled": 1 },
+    { "term": "nginx", "weight": 1, "enabled": 1 },
+    { "term": "linux", "weight": 1, "enabled": 1 },
+    { "term": "cloudflare", "weight": 1, "enabled": 1 },
+    { "term": "vercel", "weight": 1, "enabled": 1 },
+    { "term": "heroku", "weight": 1, "enabled": 1 }
+  ]
+}

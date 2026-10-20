@@ -108,15 +108,14 @@ _REGION = re.compile(
     re.I,
 )
 
-#: The regions that actually include the candidate's own region (West Africa).
-#: A gate naming one of these is open to them rather than closed; Europe alone,
-#: the Americas, APAC and the Gulf are not on the list even though all of them
-#: are `region_gated`. This is the vocabulary `scope_rank` triages by. `lagos`
-#: is the candidate's own city: a posting whose location string is just "Lagos"
-#: would otherwise read as "no restriction stated", which is the wrong way to
-#: be wrong. (There is a town of that name in Portugal; in a location string it
-#: is Nigeria almost every time, and the evidence is kept so the rare miss is
-#: visible on the row.)
+#: The regions that count as covering the applicant's home region, which this
+#: deployment sets to West Africa. A gate naming one of these is open rather
+#: than closed; Europe alone, the Americas, APAC and the Gulf are not on the
+#: list even though all of them are `region_gated`. This is the vocabulary
+#: `scope_rank` triages by. A city name belongs here because a posting whose
+#: location string is only a city would otherwise read as "no restriction
+#: stated", which is the wrong way to be wrong; the evidence stays on the row
+#: so a rare same-named city elsewhere is visible.
 _HOME_REGION = re.compile(
     r"\b(africa|sub[- ]saharan|west africa|emea|mea|nigeria|ecowas|lagos)\b",
     re.I,
@@ -245,12 +244,12 @@ def classify(location: str | None, description: str | None = None) -> tuple[str,
 
 
 def covers_home(scope: str, evidence: str | None = None) -> bool:
-    """Whether this tag actually includes the candidate's own region.
+    """Whether this tag actually includes the applicant's home region.
 
     `worldwide` always does. `unknown` says nothing, so it is not coverage.
     A `region_gated` tag covers only when the named region includes West
-    Africa: EMEA, MEA, Africa and Nigeria do; Europe alone, the Americas, APAC
-    and the Gulf do not.
+    Africa: EMEA, MEA, Africa and its countries do; Europe alone, the Americas,
+    APAC and the Gulf do not.
     """
     if scope == WORLDWIDE:
         return True
@@ -318,7 +317,7 @@ _CASES: list[tuple[str | None, str | None, str]] = [
     ("Remote, EMEA", None, REGION_GATED),
     ("Sub-Saharan Africa", None, REGION_GATED),
     ("Lagos, Nigeria", None, REGION_GATED),
-    ("Lagos", None, REGION_GATED),      # the candidate's own city
+    ("Lagos", None, REGION_GATED),      # a bare city inside a covering region
     # boards that state a place as "City, Region, CC" (Work at a Startup writes
     # "San Francisco, CA, US"). The code ends the string, so it is a country and
     # the place becomes legible; mid-string it is a subdivision and is left be.

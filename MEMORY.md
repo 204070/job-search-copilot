@@ -18,29 +18,18 @@ number, a salary figure, a city, an employer name or a board slug here. Write
 |---|---|---|
 | Postings, applications, events, question bank | `db/jobs.db` | `_docs/jobs-db.md` |
 | The user's facts | `artifacts/profile.jsonc` | read before you draft or fill |
-| The canonical CV | `artifacts/resume.pdf` | the CV that is attached |
+| The canonical CV | `artifacts/` (path in `profile.jsonc`) | the CV that is attached |
 | The digest | `artifacts/review.md` | derived; `_docs/jobs-db.md` |
 | Scan reports | `logs/leads/YYYY-MM-DD.md` | `_docs/scanning.md` |
 | Recipes and worked cases | `_docs/` | scanning, tooling, per-ATS files, runbook |
 
 ## Standing context
 
-- **Targets:** senior remote full-stack (React/TS, Node, Python). Also
-  Engineering Manager, Product Engineer, Forward Deployed Engineer, Solutions
-  Architect and AI/LLM Engineer. Title rules and weights:
-  `scanner/keywords.jsonc`.
-- **The user leads teams.** That is confirmed (18/10), so Engineering Manager
-  is a live target, and on 19/10 they stated direct people management for two
-  years or more, which clears the "2+ years" gate those postings ask for.
-  On 20/10 they decided that EM applications go out with the canonical CV as
-  it stands. Which team, how many engineers and over what period are still not
-  recorded anywhere, so no figure may be stated until they are.
-- **The CV shows less than the user has done.** The 20/10 revision prints
-  "8+ years" and names Metabase in the data stack. It still omits part of the
-  real tech surface, and it carries no management title. Read the CV that is
-  actually attached; the application row records which one went out.
-- **Go is side-project level.** Keep it general. Do not write production claims
-  about it.
+- **Targets live in config, not here.** Title rules and weights:
+  `scanner/keywords.jsonc`. What to apply to: `profile.jsonc` `targeting`.
+- **The CV shows less than the user has done.** Read the profile for the full
+  surface, and the attached CV for what a form actually received. The
+  application row records which CV went out.
 - **Eligibility:** `jobs.region_scope` is `worldwide`, `region_gated`,
   `unknown` or `us_only`. Only `us_only` is a bar, and no row is filtered out on
   this basis. Detail: `_docs/scanning.md`.
@@ -87,36 +76,24 @@ Short rules only. The worked cases live in the file each group points to.
 
 - Fill the whole form in one pass, then hand it over at once. An ATS form keeps
   no draft. → `_docs/team/application-specialist.md`
-- A form's own autofill panel, or the resume parse that runs on upload, can fill
-  or rewrite fields, hidden ones included. Fill them yourself, read everything
-  back after the upload, and write what went out. → `_docs/workable.md`,
-  `_docs/lever.md`
-- A widget can search only on real keystrokes and clear itself on blur. Find its
-  endpoint, set the visible field and the hidden field the form submits, and
-  prove the pair survives a blur. → `_docs/lever.md`
-- Hand over a captcha-protected form at once. A stale token fails server-side
-  with no field highlighted, and the repair is a fresh page and a refill. →
-  `_docs/lever.md`
-- Verify the committed value, not the click. A control can report success and
-  commit nothing. → `_docs/greenhouse.md`
-- Answer the voluntary self-identification block from `profile.jsonc`
-  (`self_identification`). Do not leave it blank, do not guess it, and ask the
-  user when a value is missing.
-- A pay figure is the user's. Use the employer's published band when the
-  posting carries one. Otherwise use the default in `profile.jsonc` for a
-  remote role open internationally. Flag the figure at handover. A field that
-  takes one number cannot hold the range: send its top. → `_docs/workable.md`
-- A set of fields can hide its own question. Workable shows the labels `A1` to
-  `C2` with no question above them. Read the group legend and the field names
-  before you fill. → `_docs/workable.md`
+- The form can rewrite what you filled, and the page can go stale: read every
+  field back after the upload, and hand a captcha form over within minutes.
+  → `_docs/team/application-specialist.md`
+- Verify the committed value, not the click. → `_docs/greenhouse.md`
+- Answer the voluntary self-identification block from the profile. Never blank,
+  never guessed. → `_docs/team/application-specialist.md`
+- A pay figure is the user's: flag it at handover, and send the top of a range
+  to a numeric field. → `_docs/workable.md`
+- A group of fields can hide its own question; read the legend first.
+  → `_docs/workable.md`
+- Attach the CV file as it is. Its name is already the upload name.
+  → `_docs/team/application-specialist.md`
 - A fact about the user goes to `profile.jsonc`. The wording sent to one
-  employer goes to the question bank.
-- Do not pad an answer with a weak public repository. Do not claim the stack an
-  OR list names unless one true leg backs it. → `_docs/ashby.md`
-- Name the employer's own product when the user has run it. Ask at intake,
-  because the CV does not carry it.
-- Some postings take email, not a form. The reply lands in a mailbox, so only
-  `review reply` records it. → `_docs/team/application-specialist.md`
+  employer goes to the question bank. → `_docs/jobs-db.md`
+- Do not pad an answer with a weak public repository. → `_docs/ashby.md`
+- Name the employer's own product when the user has run it.
+- Some postings take email, not a form. Only `review reply` clears the
+  follow-up. → `_docs/team/application-specialist.md`
 
 ### The store
 

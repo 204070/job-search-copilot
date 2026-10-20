@@ -80,6 +80,20 @@ from, and what is ambiguous. Then they review and submit.
   that running the panel means telling the agent what it wrote. The ledger has
   to hold what actually went out. Detail: `_docs/workable.md`,
   `_docs/ashby.md`.
+- **The form can rewrite what you filled.** Lever refills name, email, phone,
+  company, location and the link fields from the parsed resume on upload, and
+  only a real `change` event protects a field, so a value set by direct JS
+  assignment is overwritten. Read every field back **after** the upload, not
+  only after filling. Detail: `_docs/lever.md`.
+- **A widget can search only on real keystrokes.** Some autocompletes bind their
+  lookup to `keydown` and blank themselves on blur when nothing was picked, so a
+  fill leaves an empty dropdown. Find the endpoint the page calls, set the
+  visible field and the hidden value the form submits, then prove the pair
+  survives a blur. Worked case: `_docs/lever.md`.
+- **Hand over a captcha-protected form at once.** The token is short lived and
+  single use, and a page left open fails server-side with an error that
+  highlights no field. If that error appears, reopen and refill; do not retry
+  the stale page. Worked case: `_docs/lever.md`.
 - If the tab is `about:blank` or the form is gone, reopen and refill from
   scratch — losing state is normal, not an emergency. Work only in your tab:
   never close, navigate, or disturb anything else in their browser.
@@ -127,7 +141,7 @@ This applies to every form and every draft, not only Ashby's. Worked cases:
 - Take the facts from `artifacts/profile.jsonc` and the attached CV. Read the
   profile first, because the CV shows less than the user has done.
 - Ask for the real tech surface before writing an infrastructure or stack
-  answer. Drafting from `resume.pdf` alone once undersold the candidate badly.
+  answer. Drafting from the CV alone once undersold the candidate badly.
 - Write concrete systems, not adjectives. Engineers read these.
 - Name the employer's own product when the user has run it, in the paragraph
   where it belongs. Ask at intake which of their products the user knows,
@@ -135,15 +149,20 @@ This applies to every form and every draft, not only Ashby's. Worked cases:
 - Do not pad. A weak public repository weakens a claim about contribution.
 - Do not claim a stack that an OR list names unless one true leg backs it. Stay
   silent on the rest and write in the draft why.
-- Keep Go general: side projects and exploration, not production.
+- Respect the honesty notes in `profile.jsonc` `skills`: a technology
+  recorded there as side-project or exploratory is not written up as production
+  experience, and a project recorded as small is not offered as depth.
 - A fact about the user belongs in `profile.jsonc`. The wording sent to this
   employer belongs in the question bank.
 
 ## Phase 5 — Attach the resume
 
-- Prefer the canonical `artifacts/` PDF from the profile. If `upload`
-  times out on a styled or hidden file input, use the chunked-base64 embed
-  (script + recipe in `_docs/<ats>.md`).
+- Attach the CV at `resumes.canonical_pdf` in the profile, as it is. There is
+  nothing to copy or rename at upload time: that file already carries the name a
+  recruiter sees. The editable source is `resumes.source_markdown` beside it;
+  never re-export the PDF yourself.
+- If `upload` times out on a styled or hidden file input, use the
+  chunked-base64 embed (script + recipe in `_docs/<ats>.md`).
 - Verify twice: byte size in the DOM equals the file on disk, AND the
   filename is displayed in the page's upload zone. One without the other
   is not attached.
@@ -196,7 +215,7 @@ Before drafting:
   (a re-scan overwrites `raw_text`; the metadata copy is the record).
 - **The From address is the user's choice, so record which one was used.**
   Default to the address printed on the attached resume, but the user may send
-  from another (their Gmail has gone out on both form and email applications).
+  from another, and has done so on both kinds of application.
   Write it onto the application row: the reply lands wherever it was sent from,
   and a mail from an address the CV does not print is a mismatch a screener can
   see side by side.
@@ -263,7 +282,7 @@ If a job is determined ineligible (wrong location, visa mismatch, role
 mismatch, stale listing, etc.) **before or during fill**:
 
 1. Set `jobs.status = 'archived'` with `metadata.reason_for_archive`
-   explaining why (e.g., "US-only role; applicant in Nigeria; no sponsorship").
+   explaining why (e.g., "US-only role; no sponsorship; applicant outside the US").
 2. If an application row exists, set it to `withdrawn` (not `applied`) with
    an `application_events` note.
 3. Record the learning where it belongs: the detail and the worked case in
@@ -310,9 +329,9 @@ Facts and phrasings part company here. A **fact** about the user goes to
 `artifacts/profile.jsonc`, never into committed files, and it goes in atomic:
 `experience.facets` is a list of true statements, not one chosen emphasis. The
 **phrasing** for this role goes to the question bank, because emphasis is a
-per-application decision. PCI DSS leading on a regulated payments employer is
-not a commitment to lead with it on a dev-tools one, so the bank records what
-this role got while the profile keeps every facet available to the next.
+per-application decision. An emphasis that wins one employer is not a
+commitment to lead with it at the next one, so the bank records what this role
+got while the profile keeps every facet available.
 
 Then close the bank loop:
 

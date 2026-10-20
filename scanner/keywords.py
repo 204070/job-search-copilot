@@ -13,9 +13,10 @@ weight of the entries at or above `core_weight`, so matching the whole core
 tier is a full score and the long tail extends the scale instead of compressing
 it. Without a `core_weight` the target falls back to the total weight.
 
-All rules live in `scanner/keywords.jsonc` (committed example — replace the
-terms with your own; `python3 -m scanner` picks up edits automatically,
-`Matcher.reload()` re-reads the file when it changes).
+All rules live in `scanner/keywords.jsonc`, which is yours and gitignored,
+copied from the committed `scanner/keywords.example.jsonc`. `python3 -m
+scanner` picks up edits automatically, and `Matcher.reload()` re-reads the file
+when it changes. With no local copy, the example is read instead.
 
 The previous strategy used the title as a fixed OR-gate of nine phrasings, so
 every role family outside those nine scored 0 regardless of content: 383 of
@@ -43,11 +44,30 @@ from __future__ import annotations
 import json
 import os
 import re
+import sys
 from pathlib import Path
 
 DEFAULT_KEYWORDS_PATH = Path(__file__).resolve().parent / "keywords.jsonc"
 KEYWORDS_PATH = Path(os.environ.get("MATCH_KEYWORDS_PATH", DEFAULT_KEYWORDS_PATH))
 _COMMENT_LINE = re.compile(r"(?m)^\s*//.*$")
+
+
+def _resolve_config(path: Path | str) -> Path:
+    """The local config, or the committed template when it is absent.
+
+    Your own `keywords.jsonc` is gitignored, so a fresh clone has only
+    `keywords.example.jsonc` beside it. Reading the template keeps a clone
+    working from the first command; the note says how to make the copy.
+    """
+    path = Path(path)
+    if path.exists():
+        return path
+    example = path.with_name(f"{path.stem}.example{path.suffix}")
+    if example.exists():
+        print(f"note: {path} not found, reading {example.name}; copy it to "
+              f"{path.name} to make it yours", file=sys.stderr)
+        return example
+    raise FileNotFoundError(f"{path} not found, and no {example.name} beside it")
 
 
 def _term_pattern(entry: dict) -> str:
@@ -56,6 +76,7 @@ def _term_pattern(entry: dict) -> str:
 
 def load_config(path: Path | str = KEYWORDS_PATH) -> dict:
     """Parse the JSONC config; validate + compile every pattern eagerly."""
+    path = _resolve_config(path)
     data = json.loads(_COMMENT_LINE.sub(
         "", Path(path).read_text(encoding="utf-8")))
     for e in data.get("keywords", []):
@@ -106,7 +127,7 @@ class Matcher:
     """
 
     def __init__(self, path: Path | str = KEYWORDS_PATH):
-        self.path = Path(path)
+        self.path = _resolve_config(path)
         self._mtime = 0.0
         self._admit: list = []
         self._exclude: list = []
@@ -168,14 +189,19 @@ def min_score(default: int = 15) -> int:
     return int(os.environ.get("MATCH_MIN_SCORE", default))
 
 
+_EXAMPLE_CONFIG = DEFAULT_KEYWORDS_PATH.with_name("keywords.example.jsonc")
+
+
 def _selftest() -> int:
-    """Check the shipped config behaves as its comments claim.
+    """Check the matcher against the committed example config.
 
     Each case is (title, text, expected admits(), expected score check). The
-    config is the real one, so a term rename that silently breaks a rule shows
-    up here rather than in a lead list weeks later.
+    fixture is `keywords.example.jsonc`, not your own copy: the scoring rules
+    are yours to tune, and a term you rename must not turn this red. A bad
+    pattern in your own file still raises when it loads.
     """
-    m = Matcher()
+    m = Matcher(_EXAMPLE_CONFIG if _EXAMPLE_CONFIG.exists()
+                else DEFAULT_KEYWORDS_PATH)
     core_text = "React, TypeScript, GraphQL and Postgres. Kubernetes, AWS."
     cases: list[tuple[str, str, bool, str, object]] = [
         # title, text, admits(), description, score check
@@ -206,9 +232,6 @@ def _selftest() -> int:
         ("LLM Engineer", "RAG pipelines, embeddings, Python", True,
          "the AI vocabulary reaches AI/LLM roles",
          lambda s, mt: s > 0 and {"ai", "llm", "rag"} & set(mt)),
-        ("Senior Backend Engineer", "Lagos, Nigeria. Node and Postgres.", True,
-         "naming the candidate's own city and country scores those terms",
-         lambda s, mt: "lagos" in mt and "nigeria" in mt),
         ("Account Manager", "TypeScript, Postgres", False,
          "account manager is not engineering management",
          lambda s, mt: s == 0),
@@ -227,8 +250,8 @@ def _selftest() -> int:
          "Java, Scala, distributed systems", True,
          "staff engineer in an unfamiliar stack still admits and scores",
          lambda s, mt: s > 0 and "java" in mt),
-        ("Senior Full Stack Developer", "Bun, NestJS, Postgres, Typescript",
-         True, "the target stack outscores a single incidental term",
+        ("Senior Full Stack Developer", "TypeScript, React, Node, Postgres",
+         True, "the core tier outscores a single incidental term",
          lambda s, mt: s >= 40),
         ("Backend Developer", "We write robust, resilient code.", True,
          "word boundaries hold: 'robust' is not 'rust'",
@@ -251,7 +274,8 @@ def _selftest() -> int:
     # Cap check: a text naming every enabled term must return 99, not 100.
     samples = {"dotnet group": "C#", "gcp": "Google Cloud",
                "websocket group": "WebSockets"}
-    everything = " ".join(samples.get(e["term"], e["term"]) for e in load_entries())
+    everything = " ".join(samples.get(e["term"], e["term"])
+                          for e in load_entries(m.path))
     peak, _ = m.score("Software Engineer", everything)
     if peak != 99:
         failures += 1

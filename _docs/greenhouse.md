@@ -49,16 +49,16 @@ to one form — never canonical; each posting's lists differ.
   entered.
 - The School field is an async combobox over a partial list that also has gaps:
   the board's schools endpoint is 2466 schools at 100 per page and ignores the
-  query string, so the widget filters only what it has loaded — and a scan of
-  all 25 pages found no Nigerian school at all. A Nigerian applicant cannot pick
-  their university at any spelling. The field is optional on these forms; report
-  that rather than substituting a school that is not theirs.
+  query string, so the widget filters only what it has loaded. Read all the
+  pages before you conclude that a school is absent. When the applicant's own
+  school is not there at any spelling, report that: the field is optional on
+  these forms, and substituting a school that is not theirs is false.
 - The phone widget's dial-code combobox is `#country` (react-select classes
   plus the flag), NOT a country-of-residence question. Set it through
   intl-tel-input's own dropdown: `click '.iti__selected-country'`, `fill
   '.iti__search-input' '<country>'`, then click the option id it renders
-  (`#iti-0__item-ng` for Nigeria). The widget then reformats `#phone` to the
-  national convention (`8032538103` → `0803 253 8103`).
+  (`#iti-0__item-<iso2>` for the country). The widget then reformats `#phone`
+  to the convention that country uses.
 - The widget injects ~240 hidden `[role=option]` items (`li`, ids `iti-*`) →
   when hunting options for OTHER selects, exclude `!/^iti/`. A synthetic
   eval mousedown+click dies on those decoys.
@@ -66,31 +66,31 @@ to one form — never canonical; each posting's lists differ.
   the dropdown's `li` items sit in a fixed-position container (so `offsetParent`
   is null and they read as invisible when they are fine). More importantly,
   `fill` on the hidden search input delivers its keystrokes to whatever still
-  has focus: on 18/10 the text `Nigeria` was appended to the LinkedIn field,
-  which had been filled moments earlier (`...-ng` became `...-ngNigeria`), while
-  the search box received it too. Click a neutral element or fill a plain field
+  has focus: the country name was appended to the LinkedIn field, which had been
+  filled moments earlier, while the search box received it too. Click a neutral element or fill a plain field
   first, and read the previously filled field back afterwards.
 - "Toggle flyout" button clicks do nothing; focus/type/keys opens the menu.
 
 ## The newer board version: `Country*` is the phone dial code (19/10/2026)
 
-Validated on gh_jid 5389088004 (Alpaca). This board renders in a "remix" build
-where two field names mislead:
+One board's current build renders in a "remix" layout where two field names
+mislead:
 
 - **`#country`, labelled `Country*`, is the PHONE dial-code select**, not a
   country-of-residence question. Its options carry the dial code
-  (`Nigeria +234`, option id `react-select-country-option-158`), and once
-  committed the select displays just `+234`. Read the *option text* before
+  (`<Country> +<dial code>`, each option with its own id like
+  `react-select-country-option-<n>`), and once committed the select displays
+  just the dial code. Read the *option text* before
   answering, and never read `input.value` (the react-select search box stays
   empty): read `[class*=single-value]` inside
   `closest("[class*=select__value-container]")`, as usual.
 - **`#candidate-location`, labelled `Location (City)*`, is the location
   question.** The board's `location_questions` carry `Location`, `Latitude` and
   `Longitude`, and the widget fills the coordinates itself on submit, so no
-  lat/long input has to be written by hand. Typing `Lagos` returned exactly one
-  wanted option (`Lagos, Nigeria`, first in a list otherwise full of Lagos in
-  Chile, Mexico, Portugal and Greece), and `aria-activedescendant` was already
-  on it, so one `keys Enter` committed it. Press `keys Escape` afterwards: the
+  lat/long input has to be written by hand. Typing the city name returned one
+  wanted option first, in a list that also holds same-named cities in other
+  countries, and `aria-activedescendant` was already on it, so one `keys Enter`
+  committed it. Press `keys Escape` afterwards: the
   menu stayed `aria-expanded="true"` after the commit.
 - Field ids here are the advertised ones (`#first_name`, `#email`,
   `#question_12229452004`), so a selector can be taken straight from the board
@@ -110,13 +110,13 @@ where two field names mislead:
   between employers ("I don't wish to answer" against "Decline To Self
   Identify").
 
-## Adapting profile facts (worked example: gh_jid 6188234004, 17/10/2026)
+## Adapting profile facts
 
-- Country of legal residence was a curated 16-country list +
-  `OTHER / NOT LISTED`; Nigeria absent → truthful pick OTHER / NOT LISTED.
-  Another posting may list Nigeria plainly — always read the actual list.
-- Timezone list had no WAT entry and exactly one UTC+1 option
-  ("UTC+1 (Central Europe)") → picked it as the truthful GMT+1 match.
+- A curated residence list can be short and can leave out the applicant's
+  country. `OTHER / NOT LISTED` was the truthful pick there; another posting may
+  list that country plainly, so always read the actual list.
+- A timezone list may hold no entry for the applicant's own zone and exactly
+  one option at the same offset. That option is the truthful match; record it.
 - Duplicate questions happen (work-auth asked twice; US sponsorship now +
   future) — answer consistently with the profile.
 

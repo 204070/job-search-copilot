@@ -6,7 +6,7 @@ Load when driving the browser (nearly every application session).
 
 - `opencli --profile <name> browser jobfit <cmd>` — reuse the `jobfit`
   session to keep tab/state alive.
-- Two profiles connect (`g3pxjge8`, `6bfymbf4`) → always pass
+- More than one profile can connect → always pass
   `--profile <name>`. `opencli doctor` FAILs on multi-profile even with
   `--profile` given (ignore that; commands work).
 - Options go AFTER the subcommand: `browser jobfit tab list --window
@@ -21,11 +21,11 @@ browser. Three commands, and the tab is closed again (tested 19/10/2026):
 
 ```bash
 # 1. open a fresh tab; prints {"page": "<target id>", "url": "..."}
-opencli --profile g3pxjge8 browser jobfit tab new '<url>' --window background
+opencli --profile <profile-id> browser jobfit tab new '<url>' --window background
 # 2. run one JS expression in that tab; prints its value
-opencli --profile g3pxjge8 browser jobfit eval 'JSON.stringify([...])' --tab '<id>'
+opencli --profile <profile-id> browser jobfit eval 'JSON.stringify([...])' --tab '<id>'
 # 3. always close it, including on failure
-opencli --profile g3pxjge8 browser jobfit tab close '<id>'
+opencli --profile <profile-id> browser jobfit tab close '<id>'
 ```
 
 - `eval` prints the expression's value: a bare `JSON.stringify(...)` comes back

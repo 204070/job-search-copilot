@@ -1,0 +1,161 @@
+// Your private facts. COPY THIS FILE, do not edit it in place:
+//
+//     cp artifacts/profile.example.jsonc artifacts/profile.jsonc
+//
+// artifacts/ is gitignored, so what you write there stays on your machine.
+// This example is the only version the repo sees.
+//
+// This file is the ONLY source of personal facts for form filling and
+// drafting. Every value must be yours: the agent reads this file and never
+// guesses a fact about you. Leave a value out, or leave it empty, and it will
+// ask you instead of inventing one.
+{
+  "name": { "first": "Ada", "last": "Example" },
+
+  // The address you want replies at. If your resume prints a different one,
+  // say which to use per application: a reply lands wherever it was sent from,
+  // and a screener can see a mismatch between the form and the attached CV.
+  "email": "you@example.com",
+  "email_secondary": "you.example@gmail.com",
+
+  // Split so a form that wants a dial-code select and a national number gets
+  // both. e164 is the single-field version.
+  "phone": {
+    "e164": "+15550100123",
+    "dial_code": "+1",
+    "national_number": "5550100123",
+    "country": "United States"
+  },
+
+  "location": {
+    "city": "Your City",
+    "country": "Your Country",
+    "timezone": "UTC-5 (EST)"
+  },
+
+  // Links go out on forms in these slots. Use the profiles you actually keep.
+  "linkedin": "https://www.linkedin.com/in/your-handle",
+  "website": "https://your-site.example",
+  "github": "https://github.com/your-handle",
+  "x": "https://x.com/your_handle",
+
+  // Answer honestly: a wrong answer here is caught at the screening stage and
+  // costs more than a "no".
+  "work_authorization": {
+    "authorized_in_residence_country": true,
+    "us_sponsorship_now": false,
+    "us_sponsorship_future": false
+  },
+
+  // Language questions on forms ("English level" radio or checkbox sets).
+  // Give the level you actually have, in the labels the form offers (CEFR
+  // here: A1 to C2). Read the option list before answering: the label a form
+  // shows is not always the one you would choose for yourself.
+  "languages": {
+    "english": ""
+  },
+
+  // Voluntary self-identification (the EEOC-style block on US forms): gender,
+  // Hispanic/Latino, race, veteran status, and any disability question.
+  // Answering is the default here, not a courtesy: the agent fills them from
+  // this block rather than leaving them blank. These are yours to declare, so
+  // no value is ever deduced. Leave one empty and you will be asked.
+  "self_identification": {
+    "gender": "",
+    "hispanic_or_latino": "",
+    "race": "",
+    "veteran_status": "",
+    "set_by": "user",
+    "stated": "YYYY-MM-DD"
+  },
+
+  // Files live in artifacts/ (gitignored). canonical_pdf is what gets attached,
+  // and its FILE NAME is what a recruiter sees: surname first, so it sorts early
+  // in an alphabetical list of applicant files. The markdown beside it is your
+  // editable source, so export the PDF from it when you change something.
+  "resumes": {
+    "canonical_pdf": "artifacts/YourName-Resume.pdf",
+    "source_markdown": "artifacts/resume.md",
+    "generated_pdf": "artifacts/generated/resume-generated.pdf"
+  },
+
+  // How you frame your experience. Raw material for tailoring, not a pitch:
+  // one employer should lead with the facet that fits it. The wording actually
+  // sent goes to the question bank, which is what makes the next application
+  // faster instead of merely different.
+  "experience": {
+    "years": {
+      "stated_in_prose": "over 5 years",
+      "current_resume_pdf": "5+ years"
+    },
+    "current_role": "Senior Software Engineer",
+    "current_employer": "Your Current Employer",
+    // Keep the truth here, including what you cannot yet evidence on a CV.
+    // The agent will not state a figure that is missing.
+    "leadership": {
+      "has_led_teams": false,
+      "open_to_leading_teams": true,
+      "specifics": "if you have managed engineers, record the team, the headcount and the period"
+    },
+    // Each is true on its own. None is always said.
+    "facets": [
+      "one true sentence about what you have built",
+      "another one",
+      "a specialty you would defend in an interview"
+    ]
+  },
+
+  // What you have actually worked with, verified by you. The CV usually shows
+  // less than this, so draft technical answers from here, not from the PDF.
+  "skills": {
+    "strengths": ["TypeScript", "Python", "PostgreSQL"],
+    "databases": ["PostgreSQL", "Redis"],
+    // Keep honesty notes where the level differs: an agent that reads
+    // "Go" here will write production claims unless you say otherwise.
+    "go": "side projects and exploration only",
+    "cloud": ["AWS", "GCP"],
+    "iac_and_ci": ["Terraform", "GitHub Actions"],
+    "notable_projects": ["A side project an employer can actually look at"]
+  },
+
+  // What you want to be found for. These names also feed the scanner's title
+  // rules, so a target that lives only in a chat thread never scores.
+  "targeting": {
+    "roles": [
+      "Fullstack Software Engineer",
+      "Backend-leaning Fullstack Engineer",
+      "Engineering Manager",
+      "AI Engineer / LLM Engineer"
+    ],
+    "domains": ["fintech", "developer tools", "high-trust systems"],
+    "contract": "open to contract and full-time",
+    "overlap": "your realistic working overlap with US or European hours"
+  },
+
+  // How to answer a pay question: the employer's published band when there is
+  // one (the low end is fine), the default below for a fully remote role open
+  // internationally, and case by case otherwise. A field that takes one number
+  // cannot hold a range, so its top goes in and the handover says so.
+  "compensation": {
+    "published_band": "Use the employer's own band. The low end is fine.",
+    "default_remote_usd": "60000-80000",
+    "applies_to": "a fully remote role open internationally",
+    "otherwise": "case by case, per application",
+    "currency": "USD",
+    "set_by": "user",
+    "stated": "YYYY-MM-DD"
+  },
+
+  // The angles you can defend in a conversation. Used to write short, specific
+  // prose rather than adjectives.
+  "positioning": [
+    "one angle you can defend with a story",
+    "another one"
+  ],
+
+  "style": {
+    "date_format": "dd/mm/yyyy",
+    "tone": "clear, conversational professional English",
+    "rule": "no em dashes"
+  }
+}

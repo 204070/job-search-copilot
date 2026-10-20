@@ -27,6 +27,25 @@ Write in ASD-STE100 Simplified Technical English as a guide, not as a strict
 rule: short sentences, active voice, one term per idea, no metaphors, no em
 dashes. Keep the tone clear and conversational professional English.
 
+## Privacy: this repo is public
+
+- **Never put a personal fact in a committed file.** That covers the name,
+  email, phone, city, pay figure, employer name and board slug, in a document
+  and in a commit message or body alike. Write the fact in `artifacts/`, which
+  is gitignored, and reference the private key from the public file instead:
+  `resumes.canonical_pdf`, `compensation`, `location.city`. Docs name a role as
+  `job #<id>` or a placeholder.
+- The point of the rule is reuse: the committed files are the method, and
+  `artifacts/` is one person's data. Anything written down about this user goes
+  into `artifacts/profile.jsonc`, never into a file that ships. Then anyone can
+  clone the repo, fill their own private files, and work.
+
+## Git
+
+- **Never commit or push without my approval.** Prepare the change, show me the
+  files and the message, and wait for a yes. A push is a published act, and I
+  sign off on it first. This applies to every commit, however small.
+
 ## Application workflow (semi-automatic)
 
 - Agent drives my real browser via OpenCLI (`--profile <name>`; session pattern:
@@ -34,3 +53,6 @@ dashes. Keep the tone clear and conversational professional English.
   drafts forms, emails and documents; **I review and submit**. Full automation
   comes later, once the learning loop is stable. The application runbook is
   `_docs/team/application-specialist.md`.
+- Attach the CV at `resumes.canonical_pdf` in `artifacts/profile.jsonc`, as it
+  is. Its file name already is the upload name. The editable source is the
+  markdown beside it; never re-export the PDF yourself.

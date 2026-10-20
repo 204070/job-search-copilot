@@ -1,7 +1,11 @@
-// Curated job sources. Committed example: edit freely, then run
-//   python3 -m db.seed              # upsert by name (idempotent)
-//   python3 -m db.seed --prune      # also disable boards missing from this file
-// A fresh clone starts from THIS file — no two checkouts need the same boards.
+// Curated job sources. THIS IS THE TEMPLATE. Copy it, then edit your copy:
+//
+//     cp db/seeds/boards.example.jsonc db/seeds/boards.jsonc
+//     python3 -m db.seed              # upsert by name (idempotent)
+//     python3 -m db.seed --prune      # also disable boards missing from your file
+//
+// Your copy is gitignored, so the boards you enable and the account ids you
+// paste stay local. Until you make one, the seeder reads this example as it is.
 //
 // Per board: name (stable key; add_job.py and --board match on it),
 // kind (job_board | careers_page | rss | referral | agency | other),
@@ -227,7 +231,7 @@
       "notes": "Own X bookmarks via logged-in Chrome (x_bookmarks_cli) or Playwright fallback (x_bookmarks, profile in secrets/). `on_demand` keeps it off a full run: it reads the user's own X session through a browser they are driving, so it is scanned only when named (`python3 -m scanner --board 'X Bookmarks'`). Run python3 -m scanner.tools.x_login once, and again if the scan log reports an expired session or Cloudflare challenge.",
       // YOUR OpenCLI profile id for the X-logged-in Chrome — change on a fresh clone
       "scan_strategy": "html",
-      "scan_config": { "mode": "x_bookmarks_cli", "profile": "g3pxjge8", "cap": 50, "on_demand": true }
+      "scan_config": { "mode": "x_bookmarks_cli", "profile": "your-opencli-profile", "cap": 50, "on_demand": true }
     },
     {
       "name": "JS Guru Jobs",
@@ -256,7 +260,7 @@
       "scan_strategy": "html",
       "scan_config": {
         "mode": "opencli_eval",
-        "profile": "g3pxjge8",
+        "profile": "your-opencli-profile",
         "session": "jobfit",
         // YOUR search, exactly as the HiringCafe URL encodes it
         "url": "https://hiringcafe.com/classic?searchState=%7B%22searchQuery%22%3A%22software%22%2C%22workplaceTypes%22%3A%5B%22Remote%22%2C%22Hybrid%22%2C%22Field%22%5D%2C%22defaultToUserLocation%22%3Afalse%2C%22sortBy%22%3A%22date%22%7D",
@@ -274,7 +278,7 @@
       "scan_strategy": "html",
       "scan_config": {
         "mode": "opencli_eval",
-        "profile": "g3pxjge8",
+        "profile": "your-opencli-profile",
         "session": "jobfit",
         // The site's own filter bar, as a URL: this is the base of the search
         // the adapter sends to the index. The adapter adds two things the bar

@@ -36,16 +36,16 @@ case: application #10, 19/10/2026.
 | Last name | `input[name=lastname]` | profile `name.last` |
 | Email | `input[name=email]` | profile `email`, matching the attached resume |
 | Headline | `input[name=headline]` | left blank, as with the cover letter |
-| Phone | `input[name=phone]` plus a dial-code select | the national number only; the select already stood at `+234` and formatted the value as `803 253 8103` |
+| Phone | `input[name=phone]` plus a dial-code select | the national number only; the select already stood at the applicant's dial code (`profile.jsonc` `phone.dial_code`) and formatted the value with spaces |
 | Address | `input#address` (`data-ui="address"`) | city and country, one line |
 | City, postcode, country | plain text | filled, then cleared by the address widget; harmless, they are optional |
 | Photo | optional `input[type=file]`, `accept` images | left empty |
 | Education, Experience | `+ Add` repeaters | left empty |
 | Summary | `textarea[name=summary]` | left blank |
-| Resume | the **required** `input[type=file]` | `artifacts/resume.pdf` |
+| Resume | the **required** `input[type=file]` | the profile's `resumes.canonical_pdf`, as it is |
 | Cover letter | `textarea[name=cover_letter]` | left blank, as on every application so far |
 | Salary ($, Gross) | `input[name=QA_<n>]`, required | the top of the `compensation` default |
-| English level | radio group, `QA_<n>`, required | `C2` |
+| English level | radio group, `QA_<n>`, required | `languages.english` from the profile |
 | How did you learn about us? | checkbox group, numeric names | `Other`, plus the specify field |
 | If other, please specify | `QA_<n>`, required | the job board that actually surfaced the posting |
 
@@ -57,10 +57,10 @@ case: application #10, 19/10/2026.
   set in it. Write `input[name="6370564"]`, and put every fill in one eval only
   after checking the selectors run.
 - **The pay field takes one number and reformats as it goes.** Setting
-  `35000-50000` produced `3,500,050,000`: the dash is dropped and the digits are
-  grouped. A single number is the only valid input, and the field displayed
-  `50,000` for 50000. The figure is the user's, so the top of the
-  `compensation` default is what goes in, and the handover names it.
+  A range produced one huge number, because the dash is dropped and the digits
+  are grouped. A single number is the only valid input. The figure is the
+  user's, so the top of the `compensation` default is what goes in, and the
+  handover names it.
 - **The Address field resolves the place itself.** It is Workable's own widget
   (`id=address`, `data-ui="address"`), and setting it twice in one session
   duplicated the string into `<city>, <country>, <city>, <country>`. Set it
@@ -75,9 +75,9 @@ case: application #10, 19/10/2026.
   `[...document.querySelectorAll("input[type=file]")].find(el => el.required)`
   picks the right one without depending on the random `input_files_input_<id>`
   names.
-- The base64/DataTransfer recipe uploads fine here. Read the size back: 138099
-  bytes matched `artifacts/resume.pdf`, and the zone then showed the filename
-  with a `Replace file` link.
+- The base64/DataTransfer recipe uploads fine here. Read the size back: the
+  byte count matched the file on disk (`resumes.canonical_pdf`), and the zone
+  then showed the filename with a `Replace file` link.
 - **No third-party captcha and no self-identification block** on this form, so
   the standing `self_identification` answers do not come up. Say so at handover
   rather than implying they were answered.

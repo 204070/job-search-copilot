@@ -34,13 +34,16 @@ X-bookmarked leads are listed **regardless** of score ("Bookmarked on X").
 The repo ships working EXAMPLE config — three files to review before your
 first real scan:
 
-1. **`db/seeds/boards.jsonc`** — where jobs come from. Disable what you
-   don't use (`"enabled": 0`), tune JobSpy `search_term`/`location`, and set
-   the X Bookmarks `scan_config.profile` to your own OpenCLI profile id
-   (`opencli profile list`). Then `python3 -m db.seed` (re-run any time;
-   `--dry-run` previews, `--prune` disables boards you removed).
-2. **`scanner/keywords.jsonc`** — how jobs score. Replace the example terms
-   with words from your own résumé. `title_exclude` regexes veto a posting
+1. **`db/seeds/boards.jsonc`** — where jobs come from. Copy the template
+   first (`cp db/seeds/boards.example.jsonc db/seeds/boards.jsonc`); your copy
+   is gitignored. Disable what you don't use (`"enabled": 0`), tune JobSpy
+   `search_term`/`location`, and replace the account ids with your own (the
+   OpenCLI profile id comes from `opencli profile list`). Then
+   `python3 -m db.seed` (re-run any time; `--dry-run` previews, `--prune`
+   disables boards you removed). Seeding with no copy reads the example.
+2. **`scanner/keywords.jsonc`** — how jobs score. Copy the template
+   (`cp scanner/keywords.example.jsonc scanner/keywords.jsonc`), then replace
+   the terms with words from your own résumé. `title_exclude` regexes veto a posting
    outright (so a support advert that name-drops Kubernetes stays at 0),
    `title_admit` regexes are the gate, and `keywords` are weighted coverage.
    `core_weight` sets what a full match means, so the long tail extends the
@@ -48,10 +51,28 @@ first real scan:
    `pattern` for regex (alternations, optional words). Edits apply to new
    postings immediately, and to stored ones via
    `python3 -m scanner.tools.rescore`.
-3. **`artifacts/` (private, gitignored)** — drop in your resume
-   (`artifacts/resume.md` from the example), base cover letter, and
-   `artifacts/profile.jsonc` (name, email, phone, location, links) so
-   application fills never guess. See `artifacts/README.md`.
+3. **`artifacts/` (private, gitignored)** — everything personal. Start from
+   the placeholders, then edit them:
+
+   ```bash
+   cp artifacts/resume.example.md       artifacts/resume.md
+   cp artifacts/cover-letter.example.md artifacts/cover-letter.md
+   cp artifacts/profile.example.jsonc   artifacts/profile.jsonc
+   ```
+
+   `profile.jsonc` is the one that matters most: it carries your name, email,
+   phone, location, links, work-authorization answers, self-identification
+   answers, targeting and default pay, so a form fill never guesses. Every
+   block in `profile.example.jsonc` has a comment saying what reads it. Your
+   resume PDF goes at the path `resumes.canonical_pdf` names, and that file
+   name is what a recruiter sees. See `artifacts/README.md`.
+
+   It is a long file, but you do not have to type it by hand. Give an AI agent
+   your resume and `artifacts/profile.example.jsonc`, and ask it to write
+   `profile.jsonc` from them, keeping the comments. Three blocks are not on a
+   resume, so tell the agent to leave them empty and ask you instead:
+   `compensation`, `work_authorization` and `self_identification`. Those are
+   answers you give, not facts to infer.
 
 Nothing here phones home: all state is the local SQLite file + your files.
 
@@ -64,8 +85,8 @@ Nothing here phones home: all state is the local SQLite file + your files.
 | `scanner/tools/` | helpers: `add_job`, `classify`, `rescore`, `enrich_bookmarks`, `enrich_companies`, `probe_boards`, `x_login` |
 | `db/tools/questions.py` | the question bank CLI: `lookup` / `record` / `frequency` / `promotions` / `digest` |
 | `db/migrations/` | numbered schema files; `python3 -m db.migrate` applies new ones |
-| `db/seeds/` | curated boards (`boards.jsonc`); `python3 -m db.seed` syncs them |
-| `scanner/keywords.jsonc` | scoring rules (admit/exclude regexes + weighted terms); stored jobs need `python3 -m scanner.tools.rescore` |
+| `db/seeds/` | curated boards: your `boards.jsonc` (gitignored) copied from `boards.example.jsonc`; `python3 -m db.seed` syncs them |
+| `scanner/keywords.jsonc` | scoring rules (admit/exclude regexes + weighted terms), yours from `keywords.example.jsonc`; stored jobs need `python3 -m scanner.tools.rescore` |
 | `logs/leads/` | daily scan reports (log output, gitignored) |
 | `artifacts/` | **your private documents** — resume, cover letters… gitignored; see `artifacts/README.md` |
 | `_docs/` | deeper docs: [`scanning.md`](_docs/scanning.md), [`jobs-db.md`](_docs/jobs-db.md) |

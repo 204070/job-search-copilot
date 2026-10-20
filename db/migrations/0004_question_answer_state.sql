@@ -31,8 +31,8 @@
 -- `retired_at` is NULL for a row in use and a timestamp for one set aside.
 --
 -- Also fixes two rows where `answer` held a NOTE ABOUT AN EVENT instead of a
--- reusable answer (what a US-state dropdown did when the field had no Lagos
--- option, and what channel list a form offered). The notes move to
+-- reusable answer (what a US-state dropdown did when it had no option for the
+-- applicant's own city, and what channel list a form offered). The notes move to
 -- `metadata.original_answer`, which the FAQ already renders as "Earlier
 -- answer", and `answer` goes back to meaning the reusable text. Without that,
 -- the sent/revised comparison is comparing a note with an answer.
@@ -144,14 +144,15 @@ FROM questions q;
 
 -- --- the two note-not-answer rows -------------------------------------------
 
--- A form asked for a US state and the list had no Lagos option. What was typed
--- is an event, not an answer; the reusable answer is what to put in that field
--- next time, and the fact behind it lives in profile.jsonc (`location.city`).
+-- A form asked for a US state and the list had no option for the applicant's
+-- own city. What was typed is an event, not an answer; the reusable answer is
+-- what to put in that field next time, and the fact behind it lives in
+-- profile.jsonc (`location.city`).
 UPDATE questions
-   SET answer = 'N/A (not a US state; based in Lagos, Nigeria)',
+   SET answer = 'N/A (not a US state)',
        metadata = json_set(
            metadata, '$.original_answer',
-           'Attempted "Lagos" / "Remote" / "N/A"; the dropdown listed US states only.'),
+           'Attempted the city name / "Remote" / "N/A"; the dropdown listed US states only.'),
        updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
  WHERE question_key = 'current_state';
 

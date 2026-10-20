@@ -4,10 +4,18 @@ logs/
 
 # Private documents live in artifacts/ — standard names for scripts
 # (resume.md, cover-letter.md; see artifacts/README.md). Everything here is
-# ignored except the committed README and the *.example.md placeholders.
+# ignored except the committed README and the *.example.* placeholders.
 artifacts/*
 !artifacts/README.md
 !artifacts/*.example.md
+!artifacts/*.example.jsonc
+
+# Boards and scoring config are yours. The committed *.example.jsonc files are
+# the template; your own copies carry the boards you enable, your search terms
+# and your account ids, so they stay local. `db.seed` and the scanner read the
+# example when your copy is absent.
+db/seeds/boards.jsonc
+scanner/keywords.jsonc
 
 # Credentials & database
 secrets/

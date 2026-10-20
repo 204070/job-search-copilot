@@ -59,12 +59,11 @@
   // ads that do not require a US visa). The last one the filter bar has no
   // control for:
   //   remote yes/only   the employer says the job can be done remotely. An ad
-  //                     that says the work is on site in Bengaluru or San
-  //                     Francisco is not a job the candidate (in Lagos, going
-  //                     after remote work) can take, and 531 of the 759 ads the
-  //                     base filter returns are exactly that: US or India
-  //                     offices with no remote option. Reading them means
-  //                     storing 500 rows that no one can action.
+  //                     that says the work is on site in one named city is not
+  //                     a job someone going after remote work can take, and 531
+  //                     of the 759 ads the base filter returns are exactly that:
+  //                     US or India offices with no remote option. Reading them
+  //                     means storing 500 rows that no one can action.
   // Measured 19/10/2026: 759 ads base, 228 with remote yes/only.
   const FILTERS = '(role:eng) AND (us_visa_required:none OR us_visa_required:possible) '
     + 'AND (job_type:"fulltime") AND (remote:yes OR remote:only)';

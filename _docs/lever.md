@@ -32,7 +32,7 @@ curl -s 'https://api.lever.co/v0/postings/<slug>/<posting-uuid>?mode=json'  # on
 
 | field | control | value to use |
 |---|---|---|
-| Resume/CV | `input[type=file][name=resume]` | `artifacts/resume.pdf`; the legend marks the block `✱` |
+| Resume/CV | `input[type=file][name=resume]` | the profile's `resumes.canonical_pdf`, as it is; the legend marks the block `✱` |
 | Full name | `input[name=name]`, required | profile `name.first` + `name.last` |
 | Email | `input[name=email]`, required | profile `email`, matching the attached resume |
 | Phone | `input[name=phone]` | the national number |
@@ -64,8 +64,7 @@ curl -s 'https://api.lever.co/v0/postings/<slug>/<posting-uuid>?mode=json'  # on
   `#location-input` **and** `#selected-location`, so a filled field silently
   empties the moment the user clicks the next one. Do this instead:
   1. `GET /searchLocations?text=<city, country>` from the page context. It
-     returns an array of `{name, id}`; worked case returns one entry,
-     `Lagos, NGA`.
+     returns an array of `{name, id}`; take `results[0]`.
   2. Set `#location-input` to `results[0].name` and `#selected-location` to
      `JSON.stringify(results[0])`. **`selectedLocation` is the value the form
      actually submits**, and the input's `required` flag alone will not carry
