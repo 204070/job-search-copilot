@@ -65,6 +65,7 @@ def main(argv: list[str] | None = None) -> int:
     matches: list[dict] = []
     bookmarked: list[dict] = []    # X-bookmark intent (any score)
     new_total = seen_total = 0
+    banned_total = 0
     errors: list[str] = []
 
     # Postings the store already holds text for. A board whose assurance of a
@@ -101,10 +102,16 @@ def main(argv: list[str] | None = None) -> int:
             traceback.print_exc()
             continue
         new = seen = 0
+        banned = 0
         for job in jobs:
             if not job.get("title") or not job.get("url"):
                 continue  # incomplete posting; nothing to score or apply to
             job["company"] = (job.get("company") or "").strip() or "Unknown"
+            if matcher.bans(job["company"]):
+                # A banned employer is a veto, not a low score: no row is
+                # written, so a re-scan cannot bring the posting back.
+                banned += 1
+                continue
             score, matched = matcher.score(job.get("title"), job.get("description"))
             job["match_score"] = score
             scope, scope_evidence = classify(
@@ -132,7 +139,11 @@ def main(argv: list[str] | None = None) -> int:
             conn.commit()
         new_total += new
         seen_total += seen
-        lines.append(f"- {name}: {len(jobs)} fetched, {new} new, {seen} already known")
+        banned_total += banned
+        line = f"- {name}: {len(jobs)} fetched, {new} new, {seen} already known"
+        if banned:
+            line += f", {banned} banned"
+        lines.append(line)
 
     # --- report -----------------------------------------------------------
     # Re-tag the stored rows after the run so region_scope stays current even
@@ -145,7 +156,8 @@ def main(argv: list[str] | None = None) -> int:
     LEADS_DIR.mkdir(parents=True, exist_ok=True)
     report_path = LEADS_DIR / f"{today}.md"
     body = [f"\n## Run {run_ts}" + (" (dry run)" if args.dry_run else ""),
-            f"Threshold: score >= {threshold} | new: {new_total} | already known: {seen_total}",
+            f"Threshold: score >= {threshold} | new: {new_total} | already known: {seen_total}"
+            + (f" | banned: {banned_total}" if banned_total else ""),
             "\n### Boards"]
     body.extend(lines)
     if scope_counts is not None:

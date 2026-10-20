@@ -320,6 +320,14 @@ python3 -m scanner.tools.rescore            # re-derive match_score after the sc
     `\bmanager\b` veto is gone and the manager kinds that are *not* engineering
     management are named instead; director and above deliberately stays out.
   - `core_weight` — the weight tier that counts as a full match (see below).
+  - `company_exclude` — regexes for employers the user never wants to see
+    again. A match on the company name is a veto above both title rules: the
+    scanner stores no row for the posting, and `rescore` writes 0 to a row that
+    already exists. Banning is a config edit, not a per-row dismissal, so a
+    re-scan cannot bring the employer back. Existing rows stay in the database:
+    archive them once (`review dismiss --job <id> --reason "company banned"`)
+    and withdraw any open application for them. The list holds employer names,
+    so it lives in the gitignored copy, never in the example.
   - `keywords[]` — `term`, `weight`, `enabled`; optional hand-written `pattern`
     regex override for alternations/optional words plain terms can't express
     (invalid patterns raise at load). Plain terms compile to case-insensitive

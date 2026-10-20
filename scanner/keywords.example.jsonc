@@ -14,6 +14,9 @@
 //                  Engineer" whose advert mentions everything below still
 //                  scores 0. Excludes are checked first, so they always win.
 //
+// A company rule sits above both: `company_exclude` names employers that are
+// banned outright, and a match there means the posting is never stored.
+//
 // Then: score = 100 x matched weight / target, capped at 99, where `target` is
 // the weight of the entries at or above `core_weight`. The point of a target is
 // that the long tail extends the scale instead of compressing it: adding
@@ -109,6 +112,17 @@
     "accountant",
     "compliance officer"
   ],
+  // Employers you never want to see again. Any regex match on the company
+  // name vetoes the posting before scoring, so the scanner stores nothing for
+  // it, and a stored row re-scores to 0. Use `\\.` for a literal dot and keep
+  // the pattern narrow: this list is a ban, not a search filter.
+  //
+  //   "company_exclude": ["acme\\.io", "example staffing"]
+  //
+  // Existing rows stay in the database. Archive them once with
+  // `python3 -m db.tools.review dismiss --job <id> --reason "company banned"`,
+  // and the ban keeps them out of later scans.
+  "company_exclude": [],
   "core_weight": 3,
   "keywords": [
     // Weight 3: the tier you would lead with. Matching this tier is a full

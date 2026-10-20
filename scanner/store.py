@@ -199,7 +199,7 @@ def rescore_stored_jobs(
     from scanner.keywords import Matcher
 
     matcher = Matcher()
-    sql = "SELECT id, title, raw_text, match_score FROM jobs"
+    sql = "SELECT id, company, title, raw_text, match_score FROM jobs"
     params: list = []
     if board_id is not None:
         sql += " WHERE board_id = ?"
@@ -210,7 +210,11 @@ def rescore_stored_jobs(
     for row in conn.execute(sql, params).fetchall():
         if only_below is not None and (row["match_score"] or 0) >= only_below:
             continue
-        score, _ = matcher.score(row["title"], row["raw_text"])
+        if matcher.bans(row["company"]):
+            # A banned employer cannot lead, even if the row predates the ban.
+            score = 0
+        else:
+            score, _ = matcher.score(row["title"], row["raw_text"])
         counts[score_band(score)] += 1
         if score != (row["match_score"] or 0):
             changed += 1

@@ -1,11 +1,15 @@
 """Keyword matcher for job leads.
 
-Strategy: two title rules decide whether a posting is worth scoring at all,
-then weighted coverage over the keyword entries.
+Strategy: two title rules and a company rule decide whether a posting is
+worth scoring at all, then weighted coverage over the keyword entries.
 
-    title_exclude  any match vetoes the posting (a "Support Engineer" whose ad
-                   mentions Kubernetes scores 0, not 25).
-    title_admit    the title must match at least one pattern.
+    title_exclude    any match vetoes the posting (a "Support Engineer" whose
+                     ad mentions Kubernetes scores 0, not 25).
+    title_admit      the title must match at least one pattern.
+    company_exclude  any match on the employer name vetoes the posting, so a
+                     company the user has banned never enters the store and a
+                     stored row re-scores to 0. The list is checked before
+                     scoring, so it wins over everything else.
 
 Then `score = 100 x matched weight / target`, capped at 99 so a perfect keyword
 hit stays distinguishable from a future classifier's 100. `target` is the
@@ -84,7 +88,7 @@ def load_config(path: Path | str = KEYWORDS_PATH) -> dict:
             re.compile(_term_pattern(e), re.IGNORECASE)
         except re.error as exc:
             raise ValueError(f"bad pattern for keyword {e['term']!r}: {exc}")
-    for key in ("title_admit", "title_exclude"):
+    for key in ("title_admit", "title_exclude", "company_exclude"):
         for pattern in data.get(key) or []:
             try:
                 re.compile(pattern, re.IGNORECASE)
@@ -131,6 +135,7 @@ class Matcher:
         self._mtime = 0.0
         self._admit: list = []
         self._exclude: list = []
+        self._banned: list = []
         self._any: list = []
         self._target = 1
         self.reload(force=True)
@@ -154,6 +159,7 @@ class Matcher:
                 any_.append((rx, e["term"], e.get("weight", 1)))
         self._admit = admit
         self._exclude = _compile_many(cfg.get("title_exclude"))
+        self._banned = _compile_many(cfg.get("company_exclude"))
         self._any = any_
         self._target = _target_weight(any_, cfg.get("core_weight"))
         return True
@@ -171,6 +177,16 @@ class Matcher:
         if any(p.search(t) for p in self._exclude):
             return False
         return not self._admit or any(p.search(t) for p in self._admit)
+
+    def bans(self, company: str | None) -> bool:
+        """Has the user banned this employer? Checked before any scoring.
+
+        The company name comes from the board's own field, so the pattern is
+        matched against it as written. A ban is a veto, not a low score: the
+        scanner skips the posting, and a stored row re-scores to 0.
+        """
+        self.reload()
+        return any(p.search(company or "") for p in self._banned)
 
     def score(self, title: str | None, text: str | None) -> tuple[int, list[str]]:
         """Return (score 0-100, matched terms)."""
