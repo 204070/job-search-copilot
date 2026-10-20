@@ -187,11 +187,13 @@ identical. `jobs.region_scope` tags where each posting says it will hire:
 
 It describes the **stated restriction, never the company's home country**: a US
 company with no restriction stays `unknown`, because plenty of them hire
-worldwide. Only `us_only` is a real bar. "US timezones"/"US hours" describe
-overlap and are NOT bars. Nothing is ever filtered out on this basis — the tag
-groups the board; the daily report sorts matches by scope first, so a role you
-can't take no longer buries one you can. `jobs.region_evidence` keeps the
-phrase that produced the tag.
+worldwide. A tag is not a verdict: `us_only` is a bar when the posting demands
+US residence or US work authorisation, and a `region_gated` row is a bar only
+when its eligibility sentence excludes the user. "US timezones"/"US hours"
+describe overlap and are NOT bars. Nothing is ever filtered out on this basis:
+the tag groups the board; the daily report sorts matches by scope first, so a
+role you can't take no longer buries one you can. `jobs.region_evidence` keeps
+the phrase that produced the tag.
 
 The word `Remote` means "not in an office". It does not say who may apply. Three
 employers whose own ATS field reads `Remote` narrowed it three ways: one stated
@@ -202,6 +204,30 @@ sentence, and prefer a field that carries a region (`Home based - Worldwide`,
 `Remote - Global`) over one that carries none. Expect a mostly US net: in the
 high-score band the well-known employers resolved to a US-only or a named short
 list.
+
+### What the location sentence does
+
+The word `Remote` says "not in an office". The location sentence says what the
+employer means by it. Read the sentence, not the tag:
+
+| the sentence | what it does | eligible? |
+|---|---|---|
+| "Remote, with the primary location in Munich" | names an office or primary location | yes, unless another sentence excludes the user |
+| `Location: Munich`, `Location Type: On-site` | a structured office field | yes, same test |
+| "Remote - Europe", "EU only", "must be based in Europe" | names the eligible scope | no, when the user is outside that scope |
+| "We can only hire in the US, UK and Canada" | a country list | no, when the user's country is not on it |
+| "We do not offer visa sponsorship" | an explicit refusal | no, for an onsite role outside the user's own country; a remote role from home is still in play |
+| no location sentence | silence | yes; silence is not a refusal |
+
+A city or country named as an office is evidence of where the role sits, not a
+statement that the employer will hire only there. A region named as the scope of
+a remote role is an eligibility limit. "Europe" by itself is ambiguous until you
+read the sentence: "primary location in Europe" is an office; "Remote - Europe"
+or "Europe only" is a scope.
+
+Silence on visa sponsorship is not a refusal. A stated sponsorship offer is a
+positive signal, not a requirement. For a role in the user's own country, skip
+the sponsorship question: the user is already authorized there.
 
 ### Verify on the employer's own board
 
@@ -230,22 +256,24 @@ of one fetch of `<posting-url>/apply`. Detail: `_docs/lever.md`.
 - Write the employer's own value into `jobs.location` and let `classify` derive
   the tag. Keep the provenance in `jobs.metadata.employer_ad`.
 - The same read shows when the role held has been replaced by a different one.
-- When the check fails, archive the posting with `reason_for_archive` (the
-  runbook says how).
+- When the check finds an explicit exclusion, archive the posting with
+  `reason_for_archive` (the runbook says how).
 
 ### Not every `region_gated` list excludes you
 
 `region_gated` covers two opposite situations, and the tag alone cannot tell
 them apart, so the sort reads the evidence phrase as well
-(`eligibility.scope_rank`, shared by the scanner report and the digest):
+(`eligibility.scope_rank`, shared by the scanner report and the digest). The
+table orders evidence in the digest; it does not decide eligibility. The
+section above does.
 
 | order | scope | why |
 |---|---|---|
 | 1 | `worldwide` | open to anyone |
 | 2 | `region_gated` naming the applicant's own region | EMEA, MEA, Africa, or the country itself: officially open to you |
 | 3 | `unknown` | states nothing, so not a bar, but not a promise either |
-| 4 | `region_gated` naming only other regions | Europe alone, the Americas, APAC, the Gulf: read the list |
-| 5 | `us_only` | the only real bar |
+| 4 | `region_gated` naming only other regions | Europe, the Americas, APAC, the Gulf: read the sentence. A location tag is not a bar; an eligibility scope is. |
+| 5 | `us_only` | a bar when the posting demands US residence or authorization |
 
 A named region that includes West Africa is better information than silence,
 which is why it ranks above `unknown` instead of below it. `EMEA` includes

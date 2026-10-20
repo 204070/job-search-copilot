@@ -42,8 +42,9 @@ adds its row and its file, and keeps its mechanics there.
   surface, and the attached CV for what a form actually received. The
   application row records which CV went out.
 - **Eligibility:** `jobs.region_scope` is `worldwide`, `region_gated`,
-  `unknown` or `us_only`. Only `us_only` is a bar, and no row is filtered out on
-  this basis. Detail: `_docs/scanning.md`.
+  `unknown` or `us_only`. The tag groups the board; it does not decide
+  eligibility. Only an explicit eligibility sentence is a bar. Detail:
+  `_docs/scanning.md`.
 - **Scanning is hand-triggered** (`python3 -m scanner`). The cron schedule is
   off. Some boards need Chrome open. Detail: `_docs/scanning.md`.
 - **Design:** an agent prepares and hands over, the user reviews and sends. No
@@ -61,20 +62,31 @@ Short rules only. The worked cases live in the file each group points to.
 
 ### Eligibility
 
-- The employer's own structured field says where a posting hires. An
+- The employer's own structured field is the best evidence of where a posting
+  sits. It is evidence, not a verdict: the eligibility sentence decides. An
   aggregator's location, badge or "we hire globally" line is a hint. Check the
   employer's board before you fill anything. → `_docs/scanning.md`
 - The word `Remote` means "not in an office". It does not say who may apply.
   Read the eligibility sentence in the posting.
-- A `region_gated` list can include the user or exclude the user. Read the
-  list. EMEA and Africa include the user; Europe alone, AMER, APAC and the Gulf
-  do not.
+- **Read what the location sentence does.** A city or country named as the
+  office or primary location ("Remote, primary location Munich") is not an
+  exclusion. A region named as the eligible scope ("Remote - Europe",
+  "EU only", "must be based in Europe") is an exclusion when the user is
+  outside it. A country list without the user's country is an exclusion.
+  Silence on sponsorship is not a refusal.
+- **A stated sponsorship offer is a positive signal, not a requirement.** A
+  role in the user's own country needs no sponsorship check: the user is
+  already authorized there.
 - "US hours" and "US timezones" describe overlap, not a bar.
-- "Open to remote candidates" is not "open to you". A form that asks for a US
-  city and state, or for US work authorization, is the tell. → `_docs/greenhouse.md`
+- "Open to remote candidates" is not "open to you". Read the form's location
+  and authorization questions. A form that requires a US city and state, or
+  that treats US work authorization as a knockout, is the tell. A work
+  authorization question is not a bar by itself; answer it honestly.
+  → `_docs/greenhouse.md`
 - A board's country list is a shortlist, not a region. Poland plus ten named
   countries is not "Worldwide", even when an aggregator's badge says so.
-- A failed check ends the posting. Archive it with `reason_for_archive`.
+- Only an explicit exclusion ends the posting. Archive it with
+  `reason_for_archive`.
 
 ### Scoring
 
