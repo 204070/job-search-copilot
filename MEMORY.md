@@ -87,9 +87,13 @@ Short rules only. The worked cases live in the file each group points to.
 
 - Fill the whole form in one pass, then hand it over at once. An ATS form keeps
   no draft. → `_docs/team/application-specialist.md`
-- A form's own autofill panel can fill the optional blocks after you hand over.
-  Fill them yourself, or read them back, and write what went out. →
-  `_docs/workable.md`
+- A form's own autofill panel, or the resume parse that runs on upload, can fill
+  or rewrite fields, hidden ones included. Fill them yourself, read everything
+  back after the upload, and write what went out. → `_docs/workable.md`,
+  `_docs/lever.md`
+- A widget can search only on real keystrokes and clear itself on blur. Find its
+  endpoint, set the visible field and the hidden field the form submits, and
+  prove the pair survives a blur. → `_docs/lever.md`
 - Verify the committed value, not the click. A control can report success and
   commit nothing. → `_docs/greenhouse.md`
 - Answer the voluntary self-identification block from `profile.jsonc`

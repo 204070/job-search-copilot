@@ -55,15 +55,31 @@ curl -s 'https://api.lever.co/v0/postings/<slug>/<posting-uuid>?mode=json'  # on
 
 ## Traps
 
-- **The resume block auto-reads the attached file.** Its legend reads
-  `Couldn't auto-read resume.` / `Analyzing resume...` / `Success!`, so Lever
-  parses the upload and can write fields from it. That is the same loss mode as
-  Workable's autofill panel: values can change after the resume is attached.
-  Read every field back **after** the upload, and put what the form holds into
-  the ledger. → `_docs/workable.md`
-- **The location field is an autocomplete, not a text box.** `input#location-input`
-  resolves the place and writes the hidden `selectedLocation`. Type, wait for
-  the list, pick the entry, then read `input#location-input` back.
+- **The location widget searches on keystrokes, not on `input`.** Its own
+  script (`/js/retrieveLocations.js`) shows the shape: `input` only opens the
+  dropdown, and the lookup is a 500ms debounce bound to `keydown`, calling
+  `GET /searchLocations?text=<query>`. So `fill` or `type` sets the text, opens
+  an empty dropdown, and no request is ever made. It gets worse on blur: if the
+  dropdown is still open and nothing was picked, the handler blanks
+  `#location-input` **and** `#selected-location`, so a filled field silently
+  empties the moment the user clicks the next one. Do this instead:
+  1. `GET /searchLocations?text=<city, country>` from the page context. It
+     returns an array of `{name, id}`; worked case returns one entry,
+     `Lagos, NGA`.
+  2. Set `#location-input` to `results[0].name` and `#selected-location` to
+     `JSON.stringify(results[0])`. **`selectedLocation` is the value the form
+     actually submits**, and the input's `required` flag alone will not carry
+     the city.
+  3. Click another field to force the blur, then read both back. If both
+     survive, the pair is committed.
+- **The resume auto-read rewrites fields after the upload, hidden ones
+  included.** Attaching the file made Lever parse it and set
+  `#selected-location` to `{"name":""}`, an unresolved object, while the
+  visible input still read `Lagos, NGA`. The fill order that avoids the repair:
+  attach the resume first, resolve the location last, then read every field
+  back. The resume zone shows the parsed filename plus `Success!`.
+- **A bracket in a field name needs a quoted selector.**
+  `input[name="urls[LinkedIn]"]`, and the same for the `cards[...]` controls.
 - **hCaptcha ships on every Lever form** (two `newassets.hcaptcha.com` iframes).
   Never touch it. It is the reason the page is handed over, and the reason a
   part-filled form is worse here than elsewhere.
