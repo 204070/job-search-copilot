@@ -65,6 +65,11 @@ from, and what is ambiguous. Then they review and submit.
   over. The values are personal facts, so they stay in the private files and the
   DB; the committed docs and MEMORY say only that the block is filled from the
   profile, never what it contains.
+- **A consent is the user's, not a default.** Text-message updates, interview
+  recording or analysis, background checks: leave them unset, name them in the
+  handover, and expect a required one to block submit until the user clicks it.
+  Ticking the data-transfer acknowledgement that lets the application exist is
+  different: that one is part of filling. Worked case: `_docs/ashby.md`.
 - **Fill the whole form in one pass, then hand it over at once.** An ATS form
   keeps no server-side draft, so a part-filled form left between turns is lost
   work. Survival conditions and guards: `_docs/tooling.md`.
@@ -116,6 +121,11 @@ from, and what is ambiguous. Then they review and submit.
   Reopen with `keys ArrowUp` + `keys ArrowDown`; the filter text persists.
   Wait ~2s, then CDP-`click` the option by its id and verify the control's
   selected-value text — never `input.value`, comboboxes clear it.
+- **A visible value is not a commit.** The field keeps typed text whether or
+  not the choice was accepted, so read it after a blur, not after the click.
+  The cheap test: type a string that matches nothing, blur, and read it again.
+  When the chosen value comes back, the choice committed; when the garbage
+  stays, the field is still empty. Worked case: `_docs/ashby.md`.
 - Exclude hidden decoy options (Greenhouse's phone widget injects ~240
   invisible `[role=option]` items): click only the option id you verified
   visible. Synthetic eval clicks die on decoys.

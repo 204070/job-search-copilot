@@ -110,6 +110,33 @@ mislead:
   between employers ("I don't wish to answer" against "Decline To Self
   Identify").
 
+## "Open to remote candidates" is not "open to you" (20/10/2026)
+
+A board whose structured location reads `New York City, Remote` can send an
+aggregator a `Remote` or even an `Anywhere in the World` row, and the ad can
+still contain the sentence "this position is open to remote candidates" — which
+says the role is not office-only, not that it hires outside the US. The form
+settles it before any fill:
+
+- A required `If hired, from which city and state would you primarily perform
+  this role?` names a **US** city and state. No other country fits that box.
+- A required `Are you authorized to work in the US?` Yes/No, sitting next to
+  `Will you now, or in the future, require employer visa sponsorship (e.g.
+  H-1B, TN, E-3, or similar)?`. Answering `No` to the first and `No` to the
+  second prints a contradiction a recruiter reads as carelessness, because an
+  applicant with no US authorization needs sponsorship by definition.
+- An ad line about travel to "client offices in the US" and a hybrid office
+  anchors the work in the same country.
+
+Worked case, job #1048 (application #15): the aggregator carried
+`Anywhere in the World`, the employer's own board carried `New York City,
+Remote`, the ad asked for occasional US client travel, and the form asked both
+questions above. The user's decision was to skip rather than send an
+application that answers `No authorized` and `No sponsorship` on adjacent
+lines, and the posting was archived with that reason. The lesson is the check,
+not the employer: read the form's location and authorization questions as
+eligibility evidence, and treat a US city-and-state box as a US-anchored role.
+
 ## Adapting profile facts
 
 - A curated residence list can be short and can leave out the applicant's

@@ -2,15 +2,26 @@
 
 This file is an index, not a store.
 
-- Read it before application work.
-- Add one learning after each meaningful event: an application sent, an ATS
-  observation, a reply, a rejection, a tooling discovery.
-- Follow the pointer for the detail. Do not copy the detail into this file.
+- Read it before any agent acts on the user's behalf.
+- It holds rules that cross agents and outlive one role. An agent's craft
+  belongs in that agent's playbook, never here, so one agent's context does
+  not leak into another's.
+- Add one short rule after a meaningful event, and point at the file that owns
+  the detail. Follow the pointer; do not copy the detail in.
 
 **This repository is public.** Never write a name, an email address, a phone
 number, a salary figure, a city, an employer name or a board slug here. Write
 `job #<id>` or a placeholder (`Northwind`, `Acme`). Employer names live in
 `db/jobs.db`, `artifacts/` and `logs/`, which are gitignored.
+
+## Agents and playbooks
+
+Each agent has a playbook in `_docs/team/`. Load your own only. A new agent
+adds its row and its file, and keeps its mechanics there.
+
+| Agent | Playbook | Covers |
+|---|---|---|
+| Application specialist | `_docs/team/application-specialist.md` | forms, drafts, application email, handovers |
 
 ## Where the records live
 
@@ -21,7 +32,7 @@ number, a salary figure, a city, an employer name or a board slug here. Write
 | The canonical CV | `artifacts/` (path in `profile.jsonc`) | the CV that is attached |
 | The digest | `artifacts/review.md` | derived; `_docs/jobs-db.md` |
 | Scan reports | `logs/leads/YYYY-MM-DD.md` | `_docs/scanning.md` |
-| Recipes and worked cases | `_docs/` | scanning, tooling, per-ATS files, runbook |
+| Recipes and worked cases | `_docs/` | scanning, tooling, per-ATS files, playbooks |
 
 ## Standing context
 
@@ -35,9 +46,8 @@ number, a salary figure, a city, an employer name or a board slug here. Write
   this basis. Detail: `_docs/scanning.md`.
 - **Scanning is hand-triggered** (`python3 -m scanner`). The cron schedule is
   off. Some boards need Chrome open. Detail: `_docs/scanning.md`.
-- **Design:** the agent drafts and fills, the user reviews and submits. The
-  agent never clicks Submit and never touches a captcha. Runbook:
-  `_docs/team/application-specialist.md`.
+- **Design:** an agent prepares and hands over, the user reviews and sends. No
+  agent clicks Submit or touches a captcha for them. Playbooks: `_docs/team/`.
 - **Browser:** the OpenCLI Browser Bridge drives the user's own Chrome
   (`--profile <name>`, `jobfit` session). Detail: `_docs/tooling.md`.
 - **A commit message carries no employer name, no country and no board slug.**
@@ -60,6 +70,10 @@ Short rules only. The worked cases live in the file each group points to.
   list. EMEA and Africa include the user; Europe alone, AMER, APAC and the Gulf
   do not.
 - "US hours" and "US timezones" describe overlap, not a bar.
+- "Open to remote candidates" is not "open to you". A form that asks for a US
+  city and state, or for US work authorization, is the tell. → `_docs/greenhouse.md`
+- A board's country list is a shortlist, not a region. Poland plus ten named
+  countries is not "Worldwide", even when an aggregator's badge says so.
 - A failed check ends the posting. Archive it with `reason_for_archive`.
 
 ### Scoring
@@ -71,29 +85,18 @@ Short rules only. The worked cases live in the file each group points to.
   `scanner/keywords.jsonc`.
 - A wider gate buys volume. Read what comes back before you trust it.
 - After a scoring change, run `rescore` and read the top of the new list.
+- A banned employer is a config entry (`company_exclude`), not a dismissal per
+  row: the scan then stores nothing for it. → `_docs/scanning.md`
 
-### Filling an application
+### Acting for the user
 
-- Fill the whole form in one pass, then hand it over at once. An ATS form keeps
-  no draft. → `_docs/team/application-specialist.md`
-- The form can rewrite what you filled, and the page can go stale: read every
-  field back after the upload, and hand a captcha form over within minutes.
-  → `_docs/team/application-specialist.md`
+- An agent prepares and hands over; the user sends. → `_docs/team/`
+- Facts about the user live in `artifacts/profile.jsonc`. What one employer was
+  told lives in the question bank. Never re-derive an answer the bank holds.
+  → `_docs/jobs-db.md`
 - Verify the committed value, not the click. → `_docs/greenhouse.md`
-- Answer the voluntary self-identification block from the profile. Never blank,
-  never guessed. → `_docs/team/application-specialist.md`
-- A pay figure is the user's: flag it at handover, and send the top of a range
-  to a numeric field. → `_docs/workable.md`
-- A group of fields can hide its own question; read the legend first.
-  → `_docs/workable.md`
-- Attach the CV file as it is. Its name is already the upload name.
-  → `_docs/team/application-specialist.md`
-- A fact about the user goes to `profile.jsonc`. The wording sent to one
-  employer goes to the question bank. → `_docs/jobs-db.md`
-- Do not pad an answer with a weak public repository. → `_docs/ashby.md`
-- Name the employer's own product when the user has run it.
-- Some postings take email, not a form. Only `review reply` clears the
-  follow-up. → `_docs/team/application-specialist.md`
+- Something that belongs to the user, a pay figure or a consent, is theirs to
+  give: flag it, never infer it. → `_docs/team/application-specialist.md`
 
 ### The store
 

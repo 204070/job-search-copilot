@@ -6,14 +6,17 @@ Optimize for quality of opportunities, interview conversion, offer quality, and 
 
 ## Memory & learning loop
 
-- Read `MEMORY.md` before any application-related work; **record every learning
+- Read `MEMORY.md` before any work on the user's behalf; **record every learning
   after a meaningful event** (application sent, ATS observation, recruiter
-  reply, rejection, tooling discovery). Put the detail and the worked case in
-  the file that owns it (`_docs/<ats>.md` per posting type, `_docs/tooling.md`
-  for browser work, `_docs/scanning.md`, `_docs/jobs-db.md`, the runbook in
-  `_docs/team/`), and add **one short rule with a pointer** to `MEMORY.md`.
-  MEMORY.md is an index: it must stay short enough to read in full. No secrets,
-  private contacts or employer names in it, because the repo is public.
+  reply, rejection, tooling discovery). MEMORY holds only rules that cross
+  agents. An agent's craft belongs in its own playbook in `_docs/team/`, so one
+  agent's context does not leak into another's. Put the detail and the worked
+  case in the file that owns it (`_docs/<ats>.md` per posting type,
+  `_docs/tooling.md` for browser work, `_docs/scanning.md`, `_docs/jobs-db.md`,
+  the agent's playbook), and add **one short rule with a pointer** to
+  `MEMORY.md`. MEMORY.md is an index: it must stay short enough to read in
+  full. No secrets, private contacts or employer names in it, because the repo
+  is public.
 - Application answers are not re-derived each time: query the question bank
   (`python3 -m db.tools.questions lookup "<field label>"`) before filling, and
   record what the form asked at handover. `artifacts/faqs/*.md` are generated

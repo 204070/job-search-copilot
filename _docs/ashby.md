@@ -78,9 +78,28 @@ every time.
   `aria-expanded=true` with nothing rendered; typing filter text is the
   deterministic way to reopen it. Click only a verified visible
   `[role=option]` id (react-aria ids work through `[id="<the-id>"]`).
+- **Visible text is not proof of a commit.** A single-select keeps typed text
+  in the box whether or not the choice was accepted, so read the control after
+  a blur, not after the click. The cheap test: type a string that matches no
+  option, blur, and read the field again. When the control shows the chosen
+  value, the choice was committed; when the garbage text stays, nothing was
+  picked and the field is still empty (20/10/2026, country and location
+  autocompletes on one form). Typing the exact option name and tabbing away
+  committed both; a plain click on the option did not.
+- **Read the notice under the form title before a second attempt.** Some
+  postings limit applications per job (two in 30 days, no reapply within 60
+  days unless an offer follows). A fill that goes wrong is not always
+  repeatable, which is one more reason to fill the whole form in one pass.
 - A free-text compensation field can carry the employer's published band as
   a range; a numeric single-value field takes one number
-  (`_docs/workable.md`).
+  (`_docs/workable.md`). The band is a draft, not a floor: on 20/10/2026 the
+  user replaced a posted band with a lower range at review, so hand the figure
+  over as theirs to change.
+- **Consent radios belong to the user.** Text-message updates and
+  interview-integrity analysis are choices, not facts. Leave them unset, name
+  them in the handover, and expect the interview-integrity one to be marked
+  required, so the user has to click before submit. The data-transfer
+  acknowledgement at the foot of the form is different: tick it.
 - The resume input is `input[type=file]`; see Phase 5 for the attach method.
 
 ## Filling it in one pass
