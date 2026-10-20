@@ -97,6 +97,9 @@ Short rules only. The worked cases live in the file each group points to.
 - Verify the committed value, not the click. → `_docs/greenhouse.md`
 - Something that belongs to the user, a pay figure or a consent, is theirs to
   give: flag it, never infer it. → `_docs/team/application-specialist.md`
+- The agent's fill is a draft. The user may submit from another browser and
+  edit the prose, so ask for the final wording and record that, not the fill.
+  → `_docs/team/application-specialist.md`
 
 ### The store
 

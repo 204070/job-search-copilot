@@ -204,6 +204,14 @@ Narrate the full form state as a table — field, value, source
   turns out to be wrong (an answer that is really case by case, not one fact),
   drop it with `--clear-promotes-to` and put the reason in `--reasoning`.
 
+- **Give every value as text, not only in the browser.** The user may submit
+  from another browser, or paste the prose boxes there. The table is then the
+  source they copy from. After the submit, ask whether any wording changed and
+  record what actually went out, not the agent's draft. The agent's fill is a
+  draft until the user submits: on 20/10/2026 the user rewrote the Additional
+  Information box and submitted from another browser, so the ledger had to be
+  corrected afterwards.
+
 You never click Submit. You never touch the captcha except to point at it.
 Narrating "I think it's ready" without the table is not a handover.
 

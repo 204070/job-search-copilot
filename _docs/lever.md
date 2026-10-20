@@ -107,3 +107,7 @@ curl -s 'https://api.lever.co/v0/postings/<slug>/<posting-uuid>?mode=json'  # on
 ## Human-only
 
 - The hCaptcha, the final review, Submit.
+- The submit often happens in another browser, with the handover values pasted
+  in and the prose boxes edited. On 20/10/2026 two Lever submissions in a row
+  went out that way. So give the values as plain text, and after the submit ask
+  for the final wording and record that, not the fill.
