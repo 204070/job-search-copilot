@@ -63,6 +63,19 @@ LinkedIn rate-limits. 6 `html` boards stay pending — reconnaissance status for
 each lives in `boards.notes` (migration 0009); paywalled/dormant boards
 (Remote4Africa, RemoteAfrica, Crossover) are `manual`, Cleverjobs is disabled.
 
+## Aggregator boards
+
+A board can be an aggregator. The posting, the application form and the reply
+can all come from the board, while a client company is the employer. The board
+brand is not the employer. Before you treat a role as a direct application,
+read the posting for the client name, and record the client on the job and
+application rows when the reply names it. A rejection from the board can be the
+client's decision; record it against the client employer, not the board.
+
+A board's matching system is a separate source to evaluate. It can surface
+roles, but it does not replace the employer's own board. Check the client and
+the eligibility sentence before you fill anything.
+
 ## Server-rendered list boards (`jsgurujobs`, `javascript_jobs`)
 
 Both boards publish no feed and no JSON, but their listing pages arrive fully

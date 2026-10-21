@@ -66,6 +66,10 @@ Short rules only. The worked cases live in the file each group points to.
   sits. It is evidence, not a verdict: the eligibility sentence decides. An
   aggregator's location, badge or "we hire globally" line is a hint. Check the
   employer's board before you fill anything. → `_docs/scanning.md`
+- **A board can be an aggregator, not the employer.** The application form and
+  the reply can come from the board while a client company hires. Check the
+  client before you treat a role as direct, and record the client on the job
+  and application rows. → `_docs/scanning.md`
 - The word `Remote` means "not in an office". It does not say who may apply.
   Read the eligibility sentence in the posting.
 - **Read what the location sentence does.** A city or country named as the
@@ -83,6 +87,10 @@ Short rules only. The worked cases live in the file each group points to.
   that treats US work authorization as a knockout, is the tell. A work
   authorization question is not a bar by itself; answer it honestly.
   → `_docs/greenhouse.md`
+- **US sponsorship is conditional.** Read the bank's
+  `us_sponsorship_required` answer before you respond. The profile booleans
+  describe the fully remote case; a question about US work authorization needs
+  the bank's rule. → `_docs/jobs-db.md`
 - A board's country list is a shortlist, not a region. Poland plus ten named
   countries is not "Worldwide", even when an aggregator's badge says so.
 - Only an explicit exclusion ends the posting. Archive it with
