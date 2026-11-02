@@ -33,3 +33,24 @@ own structured fields. No page render, no browser session, one request:
   on location, and the row carries that as `reason_for_archive`.
 - The inverse also holds: `remote_details.value = remote` with no street address
   is a role that can be taken from here, whatever the base country says.
+
+## Two signals that read as closure and are not
+
+Worked case (22/10/2026, job #2777): the board JSON returned `[]`, the apply
+page rendered `Application Submitted` with no form, and the row was archived as
+closed. The user then confirmed they had submitted the application. Both
+signals were wrong:
+
+1. **`Application Submitted` on the apply page is this browser's own
+   application state.** Breezy keeps it per position, so the page shows it when
+   an application went out from this profile. Ask the user before you archive;
+   the answer may be "I applied", not "closed". Clearing `localStorage` does not
+   remove it (the `ngStorage-<position>` key only holds the form draft).
+2. **An empty board JSON is not proof of closure.** The employer's own careers
+   page still listed the role with a working Apply link to the same posting.
+
+The check that settles closure: open the posting page and click Apply. A live
+posting renders the form. A closed one renders `No longer accepting
+applications`, or the board's own no-positions state. Until one of those
+appears, treat `[]` and `Application Submitted` as hints and confirm with the
+user.

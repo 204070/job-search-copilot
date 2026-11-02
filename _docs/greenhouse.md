@@ -68,8 +68,49 @@ to one form — never canonical; each posting's lists differ.
   `fill` on the hidden search input delivers its keystrokes to whatever still
   has focus: the country name was appended to the LinkedIn field, which had been
   filled moments earlier, while the search box received it too. Click a neutral element or fill a plain field
-  first, and read the previously filled field back afterwards.
+  first, and read the previously filled field back afterwards. Recurred
+  2/11/2026 on the EDB form, where the text landed in `#email`
+  (`hello@204070.meNigeria`); the `email-address-validator` request in the
+  network log is what exposed it. Treat a read-back of every filled field after
+  the phone widget as mandatory, not optional.
+- **`Location (City)` commits only from a synthetic click on the option, in one
+  eval.** Measured 2/11/2026 on the EDB form: `#candidate-location` renders no
+  listbox at all until `api-geocode-earth-proxy.greenhouse.io/v1/autocomplete`
+  answers, and `type` alone left `aria-expanded="false"` with the typed text
+  discarded by the next read. `click` then `keys ArrowDown` did not open it
+  either. What worked was one eval that focused the input, set the value through
+  the native setter with an `input` event, polled `[role=option]` for up to five
+  seconds, then dispatched `mousedown`, `mouseup` and `click` on the option whose
+  text was `Lagos, Nigeria`. Confirm through
+  `closest('[class*=select__value-container]')` reading `Lagos, Nigeria`; the
+  input's own `value` stays empty by design.
 - "Toggle flyout" button clicks do nothing; focus/type/keys opens the menu.
+- **Read the option lists from the board API before you open a menu.** Add
+  `?questions=true` to the job endpoint
+  (`boards-api.greenhouse.io/v1/boards/<slug>/jobs/<gh_jid>?questions=true`) and
+  every custom question arrives with its label, `required` flag, field name and
+  the exact option labels of a `multi_value_single_select`. That is the same
+  data the page renders, without a menu to open, and it is the only cheap way
+  to see a required Yes/No knockout before you start filling.
+- **On the remix board the menu will not open from `click` or `type`.** Measured
+  31/10/2026: `opencli click '[id="<id>"]'` reported `clicked: true`,
+  `type '[id="<id>"]' 'Male'` put the text into `input.value`, and
+  `aria-expanded` stayed `"false"` with zero `[class*=select__option]` nodes.
+  `opencli select` answers `{"code":"not_a_select"}` because the control is not
+  a native `<select>`. What works is one synthetic sequence on
+  `[class*=select__control]`: `pointerdown` (as a `PointerEvent`), then
+  `mousedown`, `mouseup` and `click`. The menu then renders and the options
+  appear.
+- **Clear the filter before reading the list.** A filter already in the box
+  hides options, and substring matching surprises: "Male" also matches
+  "Female", so the gender list read as two entries. Set the input to `''`
+  through the native value setter
+  (`Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set`)
+  plus an `input` event, then open the menu.
+- **`#country` is the phone dial-code select even without an asterisk.** Its
+  options read `<Country> +<dial code>` ("Nigeria +234"), and the board's
+  `?questions=true` list has no country-of-residence question at all. Read the
+  option text, not the label.
 
 ## The newer board version: `Country*` is the phone dial code (19/10/2026)
 
@@ -136,6 +177,26 @@ application that answers `No authorized` and `No sponsorship` on adjacent
 lines, and the posting was archived with that reason. The lesson is the check,
 not the employer: read the form's location and authorization questions as
 eligibility evidence, and treat a US city-and-state box as a US-anchored role.
+
+Worked case, job #1156 (application #22, 23/10/2026): the posting named an
+onsite/hybrid European office with no explicit exclusion in the description
+text, and the Greenhouse form asked a required custom Yes/No question (`Are you
+located in <country>?`), which was answered `No` alongside a cover letter
+offering relocation with sponsorship. The employer rejected two days later
+specifically because they required someone already located in that country. A
+required `Are you located in <country>?` question on the form is a location
+knockout signal; flag it at handover so the user knows the posting screens on
+current residence even when the description text is silent.
+
+- **A required `Are you eligible to work in this location (without
+  sponsorship)?` is the knockout in one field.** Worked case, 31/10/2026: the
+  board carried the same role twice, `India (remote)` and `USA (remote)`, with
+  byte-identical descriptions and no globally-open twin, and the form asked that
+  question with `Yes` and `No` as the only options. For an applicant outside
+  that country the truthful answer is `No`, which ends the application before a
+  human reads it. Check the whole board for a twin open to the applicant before
+  filling anything, and treat this question as eligibility evidence in its own
+  right.
 
 ## Adapting profile facts
 

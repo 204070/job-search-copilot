@@ -37,6 +37,21 @@ is written into a committed file.
 - Never fill six fields before checking the one that decides it. When the check
   fails, archive the posting with `reason_for_archive` and stop.
 
+## One job, several titles
+
+A board can publish the same role under three names. Compare the descriptions
+before you treat them as separate postings: on 31/10/2026 one employer listed
+Full Stack Engineer, Founding Engineer and AI Product Engineer, and the three
+`descriptionHtml` values were byte-identical at 4,528 characters, with the same
+Location, Location Type and Employment Type. Applying to more than one is
+applying to the same job twice, which the two-applications-in-thirty-days notice
+turns into a waste of the second slot.
+
+- Hash or diff the description text across the board JSON. Equal text plus equal
+  structured fields means one posting.
+- A posting id that is absent from the board JSON and answers 404 is removed, not
+  duplicated. Archive it with that reason.
+
 ## Field inventory: what an Ashby form carries
 
 An optional **"Autofill from resume"** panel sits above the form (its own file
@@ -63,6 +78,24 @@ every time.
 | Where did you hear about this vacancy? | radio set or free text | the board that actually surfaced the posting |
 | Referrer name | text | blank unless the user names one |
 
+- **Yes/No questions are buttons, and an input-only inventory misses them.**
+  Measured 1/11/2026 on the Hex form: two required US questions ("Are you
+  legally authorized to work in the US?" and "Will you now or at any time in the
+  future require visa sponsorship?") rendered as `<button>Yes</button>` /
+  `<button>No</button>` inside `[data-field-path="question_<id>"]`, with
+  `aria-pressed` as the only state. A field read that collects `input`,
+  `textarea` and `select` returns nothing for them, so the form looks complete
+  while two questions are unset. Read the buttons too, and group them by the
+  nearest `[data-field-path]`: the question text is the previous sibling of the
+  button row.
+- **A real CDP click toggles an Ashby radio; a synthetic one does not.** A JS
+  `.click()` on the label plus a dispatched `change` reported `checked: true`
+  and then read back empty. `opencli click 'label[for="<the full id>"]'` stuck.
+  The ids carry a UUID prefix that changes per render, so read the exact `for`
+  value first rather than guessing a suffix.
+- **"Anything else you want to add?" is a single-line input.** Newlines are
+  stripped and `fill` answers `{"code":"value_mismatch"}` with the paragraphs
+  joined. Write one paragraph.
 - The question set varies by posting: a pay, sponsorship, notice-period or
   start-date field may or may not appear. Read the form, and do not import an
   answer from another posting because the employer is the same.
@@ -78,6 +111,24 @@ every time.
   `aria-expanded=true` with nothing rendered; typing filter text is the
   deterministic way to reopen it. Click only a verified visible
   `[role=option]` id (react-aria ids work through `[id="<the-id>"]`).
+- **A location autocomplete can be country-level only.** Measured 2/11/2026 on
+  a `Where are you located?` field: `role=combobox`, `aria-haspopup=listbox`,
+  placeholder `Start typing...`. Typing a city (`Lagos`) rendered a real
+  listbox with the text `No results`, and the input still held the typed city
+  with `aria-expanded=true`. Read back, it looks answered; nothing is
+  committed, and there is no option to commit. Typing the country name
+  (`Nigeria`) produced one `[role=option]` with `aria-selected=true`, and a
+  CDP click on it closed the listbox and left `Nigeria` in the field. When a
+  city name returns no options, try the country before assuming the control is
+  broken, and treat `aria-expanded=true` after a fill as "uncommitted".
+- **A radio click can report success and not stick.** The same pass clicked
+  four labels; all four answered `{"clicked":true,...,"hit":"target"}`, and
+  three read back checked. The first one (`LinkedIn`) read back unchecked
+  while the other three held. Click the label again and re-read the whole
+  `input[type=radio]:checked` set, rather than trusting one click.
+- **Radio clicks can blank a text field filled earlier.** After the radio pass
+  the location input was empty again. Read every field back after the radios,
+  not only after the text pass.
 - **Visible text is not proof of a commit.** A single-select keeps typed text
   in the box whether or not the choice was accepted, so read the control after
   a blur, not after the click. The cheap test: type a string that matches no
@@ -98,8 +149,12 @@ every time.
 - **Consent radios belong to the user.** Text-message updates and
   interview-integrity analysis are choices, not facts. Leave them unset, name
   them in the handover, and expect the interview-integrity one to be marked
-  required, so the user has to click before submit. The data-transfer
-  acknowledgement at the foot of the form is different: tick it.
+  required, so the user has to click before submit. The data-retention
+  acknowledgement at the foot of the form is a consent too, so leave it unset
+  and name it. `AGENTS.md` forbids ticking a consent on the user's behalf, and
+  a ticked box cannot be defended at review; one click from the user costs
+  less than that. Background-check acceptance is the same shape and is also
+  theirs.
 - The resume input is `input[type=file]`; see Phase 5 for the attach method.
 
 ## Filling it in one pass
@@ -158,4 +213,10 @@ resuming. Details and guards: `_docs/tooling.md`.
 
 ## Human-only
 
+- **A captcha can be visible even when the form carries no consent checkbox.**
+  On 31/10/2026 the form had no checkbox at all, but a reCAPTCHA Enterprise
+  anchor iframe was rendered at the foot of the page and stayed unsolved while
+  Submit was enabled. Read for it before the handover
+  (`document.querySelector("iframe[src*=recaptcha]")`) so the user is not left
+  guessing why Submit does nothing.
 - Final review, Submit. Never click Submit.

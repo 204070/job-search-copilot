@@ -10,6 +10,10 @@ form, never canonical.
   resolves to `apply.workable.com/<slug>/j/<shortcode>`. The posting is one page
   with an **Overview** and an **Application** tab; the form sits at
   `.../<shortcode>/apply/`, and the tab control is enough to reach it.
+- A `jobs.workable.com/view/<code>/...` link is a public view page, not the
+  apply shortcode. Open `apply.workable.com/<slug>/`, read the job card's
+  `data-id` or its own `a[href]`, then use
+  `apply.workable.com/<slug>/j/<shortcode>/apply/`. The two codes can differ.
 - The posting header carries the employer's own three facts in one line:
   the work type (`Remote`), the department, then the location. Read them before
   filling. The employer's board index at `apply.workable.com/<slug>` lists every
@@ -19,6 +23,13 @@ form, never canonical.
   studio's base country while the ad said "100% remote, global team". The base
   country is not a residence bar, and the absence of a listed country list means
   nothing closes the role. Check the ad's own eligibility sentence, then apply.
+- **A POSTING'S `location` FIELD CAN BE THE HIRING ENTITY, AND IT CAN STILL BE A
+  BAR IN PRACTICE.** Second case, 25/10/2026: a `Remote` posting for job #3709
+  carried one country in the structured field, `remote: true`, no country list in
+  the ad, and no salary. The employer invited a candidate outside that country to
+  interview the next day. So the field alone is evidence, never a verdict: do not
+  skip the posting on it, and do not promise the role is open worldwide on it
+  either. The interview is what settles it.
 
 ## Field inventory (worked example: job #2063, 19/10/2026)
 
@@ -70,11 +81,19 @@ case: application #10, 19/10/2026.
   `* English level`. The checkbox group's legend is `* How did you learn about
   us?`, and its options are partly regional boards. Walk up the parents for the
   legend before you answer.
-- **Two file inputs exist.** The first accepts images and is optional (the
-  photo); the second is required and accepts pdf/doc/docx (the resume).
+- **Two file inputs exist, and their required flags can swap.** One posting
+  marked the image-only input as the required photo and the pdf/doc/docx input
+  as the optional resume. Read each input's `required` flag and its `accept`
+  list. Do not assume the photo is optional or the CV is required.
   `[...document.querySelectorAll("input[type=file]")].find(el => el.required)`
-  picks the right one without depending on the random `input_files_input_<id>`
-  names.
+  picks the required one without depending on the random
+  `input_files_input_<id>` names. A required photo with no photo on file is a
+  handover blocker, not a field to fill with a placeholder.
+- **A header country list is an eligibility list, not the employer's base.**
+  A list of five named countries is a shortlist. A list without the user's
+  country is an exclusion. Present it before filling. If the user chooses to
+  proceed anyway, record the override on the application row and do not
+  describe the role as eligible.
 - The base64/DataTransfer recipe uploads fine here. Read the size back: the
   byte count matched the file on disk (`resumes.canonical_pdf`), and the zone
   then showed the filename with a `Replace file` link.

@@ -4,15 +4,38 @@ Load when driving the browser (nearly every application session).
 
 ## Session pattern
 
-- `opencli --profile <name> browser jobfit <cmd>` — reuse the `jobfit`
-  session to keep tab/state alive.
+- `opencli --profile <name> browser --session jobfit <cmd>` — reuse the
+  `jobfit` session to keep tab/state alive.
+- **opencli 2.x takes the session as `--session <name>`**, an option on
+  `browser`. Version 1.x took it as a positional (`browser jobfit <cmd>`), and
+  on 2.x that form dies with `unknown command 'jobfit'`. The upgrade from 1.8.8
+  to 2.0.2 on 29/10/2026 changed this, so an old habit or an old note is the
+  first thing to suspect when a browser command answers `unknown command`.
+  `opencli browser --session jobfit tab list` and `opencli browser tab list
+  --session jobfit` both work; keep the option before the subcommand.
+- **`--tab` is an option of the subcommand, not of `browser`.** Put it after
+  the subcommand (`... browser --session jobfit eval '<js>' --tab <id>`), which
+  is where it was written on every earlier run. Placed before `eval` it dies
+  with `unknown option '--tab'`, and a script that built its argv that way
+  reports every call as failed while the session is fine.
 - More than one profile can connect → always pass
   `--profile <name>`. `opencli doctor` FAILs on multi-profile even with
   `--profile` given (ignore that; commands work).
-- Options go AFTER the subcommand: `browser jobfit tab list --window
-  background` works, `browser --window background jobfit …` dies with
-  `unknown command 'jobfit'` (commander reads the session name as its
-  subcommand).
+- **`open` in a session that holds no tab takes over a tab another session
+  holds** (measured 22/10/2026). `browser --session tracium open <url>` with
+  `tracium` empty came back with the target id `jobfit` was bound to, so it navigated
+  that tab away and the filled form on it was lost. So: check `tab list`
+  before `open`. Empty session? Make the tab with `tab new <url>` and close it
+  after, which never reuses a tab. Need that session to own a tab? `bind` it
+  first, so the tab is its own.
+- **`tab close` can take the whole window, and every tab in it, down with the
+  tab** (measured 23/10/2026). A session with one filled form open, then a
+  second form made with `tab new`, then `tab close` on the second, left the
+  session on `about:blank` and the filled form gone. Ashby keeps no
+  server-side draft, so the fill had to be redone. Do not open a second form of
+  the same board to compare: read the other posting with a plain `fetch` of the
+  board's JSON API instead, and keep the one form tab alone until it is
+  submitted.
 
 ## Reading a page's data (not filling a form)
 
@@ -21,11 +44,11 @@ browser. Three commands, and the tab is closed again (tested 19/10/2026):
 
 ```bash
 # 1. open a fresh tab; prints {"page": "<target id>", "url": "..."}
-opencli --profile <profile-id> browser jobfit tab new '<url>' --window background
+opencli --profile <profile-id> browser --session jobfit tab new '<url>' --window background
 # 2. run one JS expression in that tab; prints its value
-opencli --profile <profile-id> browser jobfit eval 'JSON.stringify([...])' --tab '<id>'
+opencli --profile <profile-id> browser --session jobfit eval 'JSON.stringify([...])' --tab '<id>'
 # 3. always close it, including on failure
-opencli --profile <profile-id> browser jobfit tab close '<id>'
+opencli --profile <profile-id> browser --session jobfit tab close '<id>'
 ```
 
 - `eval` prints the expression's value: a bare `JSON.stringify(...)` comes back
@@ -76,28 +99,41 @@ opencli --profile <profile-id> browser jobfit tab close '<id>'
   (`state`/`extract`/`find`/`eval`); screenshots only for layout/overlap
   questions when viewable. Re-test before assuming either way.
 
-## Session tab survival (tested 18/10/2026)
+## Session tab survival: the 10-minute `about:blank` reset (resolved 23/10/2026)
 
-A long-running fill can come back to `about:blank`, losing everything typed so
-far. ATS forms keep no server-side draft, so this is lost work, not a refresh.
+A filled form left open for review can redirect to `about:blank` (or close)
+after 10 minutes of CLI inactivity, losing everything typed on it.
 
-- What it is NOT: a plain idle timeout. Test: opened the form, ran nothing for
-  100s, re-read the URL — the tab was still on the form. So do not assume
-  "work fast or lose it" is the whole story.
-- What it most likely is: the session tab going away underneath the bridge
-  (window/tab closed, browser or machine restarted/slept, extension reloaded),
-  after which the next command silently reconnects to a placeholder blank tab
-  with a NEW page id. Observed once after a multi-minute gap: same page id as
-  the very first `open`, URL `about:blank`, and it was the only tab.
-- Guards that work:
-  - Re-read `tab list` (or `eval location.href`) before resuming any session
-    and treat `about:blank` as "the page is gone, reopen it".
-  - Pin the tab explicitly: `tab new <url>` then `tab select <targetId>`, so
-    there is a handle to re-select instead of landing on a placeholder.
-  - Fill the whole form in one pass and hand over for submission immediately;
-    do not leave a part-filled ATS form sitting between turns.
-- Version note: v1.8.8 / extension v1.0.24 were current; v2.0.0 / v1.0.25
-  were offered as updates. Worth applying before blaming the workflow.
+- **Exact cause (verified in the OpenCLI Chrome extension `background.js`,
+  v1.0.24 through v1.0.26):**
+  - Every tab created via `opencli browser --session <session> open` or `tab new` is
+    marked `session.owned = true` with a default idle timer of
+    `IDLE_TIMEOUT_INTERACTIVE = 6e5` (**600,000 ms = 10 minutes**). That is why
+    the 100-second test on 18/10 passed while a 10-minute review window lost the
+    page.
+  - When 10 minutes pass with no CLI command on `<session>`,
+    `resetWindowIdleTimer` calls `releaseLease(leaseKey, "idle timeout")`:
+    - If another owned lease shares the window, it calls
+      `chrome.tabs.remove(tabId)` (closes the tab).
+    - If it is the only owned lease in the container group, it calls
+      `chrome.tabs.update(tabId, { url: "about:blank", active: true })` to turn
+      the tab into a reusable blank placeholder.
+- **Does updating the extension (`v1.0.24` → `v1.0.26`) change this?**
+  - **No.** Both versions on disk carry the exact same `IDLE_TIMEOUT_INTERACTIVE
+    = 6e5` and `releaseLease` reset logic.
+- **How to keep a filled form open so it never resets during user review:**
+  1. **Pass `OPENCLI_BROWSER_IDLE_TIMEOUT=86400` (in seconds = 24 hours) on
+     every `opencli` command (`cli.js:517`):**
+     ```bash
+     OPENCLI_BROWSER_IDLE_TIMEOUT=86400 opencli --profile <id> browser --session <session> ...
+     ```
+     The CLI forwards `idleTimeout` to the extension, which stores
+     `idleTimeoutMs = cmd.idleTimeout * 1000` (24 hours) in `sessionOverrides`
+     for that session.
+  2. **Or bind a user-opened tab (`opencli browser --session <session> bind`):**
+     In `background.js`, `if (session?.kind === "bound") return IDLE_TIMEOUT_NONE;`
+     (`-1`) and `session.owned === false`. A bound user tab has no idle timer
+     and is never redirected to `about:blank` when detached.
 
 ## Reuse: recipes for now, a plugin only if filling becomes the bottleneck
 

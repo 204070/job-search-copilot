@@ -168,16 +168,31 @@ def _fetch_mapped(data, cfg: dict) -> list[dict]:
 
 def fetch_jobspy(board: dict, cfg: dict) -> list[dict]:
     """Scrape a JobSpy-supported board (indeed, linkedin, zip_recruiter,
-    glassdoor, bayt, ...). Requires `pip install python-jobspy`."""
+    glassdoor, bayt, ...). Requires `pip install python-jobspy`.
+
+    `linkedin_fetch_description` asks for each posting's advert text, which is
+    what makes a LinkedIn row scorable: without it the row arrives with a title
+    and a company only and scores 0. It costs one extra request per posting, so
+    LinkedIn answers 429 when the board asks for too many at once; keep
+    `results_wanted` at 25 or below when it is on.
+    """
     from jobspy import scrape_jobs  # deferred: optional dependency
 
-    df = scrape_jobs(
-        site_name=cfg["source"],
-        search_term=cfg.get("search_term"),
-        location=cfg.get("location"),
-        results_wanted=cfg.get("results_wanted", 25),
-        hours_old=cfg.get("hours_old"),
-    )
+    kwargs = {
+        "site_name": cfg["source"],
+        "search_term": cfg.get("search_term"),
+        "location": cfg.get("location"),
+        "results_wanted": cfg.get("results_wanted", 25),
+        "hours_old": cfg.get("hours_old"),
+    }
+    # Optional keys, passed only when the board asks for them, because not every
+    # JobSpy site accepts them.
+    if cfg.get("linkedin_fetch_description"):
+        kwargs["linkedin_fetch_description"] = True
+    if cfg.get("is_remote"):
+        kwargs["is_remote"] = True
+
+    df = scrape_jobs(**kwargs)
     if df is None or df.empty:
         return []
     jobs = []
@@ -217,6 +232,7 @@ def fetch_jobspy(board: dict, cfg: dict) -> list[dict]:
 KNOWN_HTML_MODES = {
     "x_bookmarks", "x_bookmarks_cli",   # own X bookmarks (Playwright / OpenCLI)
     "jsgurujobs", "javascript_jobs",    # server-rendered listing HTML
+    "relocate_me",                      # server-rendered listing HTML
     "opencli_eval",                     # page data only the browser can reach
 }
 
@@ -230,7 +246,7 @@ def fetch_html(board: dict, cfg: dict, described: set[str] | None = None) -> lis
     if mode in html_boards.LIST_MODES:
         return fetch_html_list(board, cfg, described)
     if mode == "opencli_eval":
-        return fetch_opencli_eval(board, cfg)
+        return fetch_opencli_eval(board, cfg, described)
     raise ValueError(f"no parser for html mode {mode!r}")
 
 
@@ -321,7 +337,7 @@ def _add_details(rows: list[dict], cfg: dict, described: set[str]) -> None:
     (a row with no text is a row this filter asks for). Failures are summarised
     on stderr, because a row with no description scores on its title alone.
     """
-    parser = html_boards.DETAIL_MODES[cfg["mode"]]
+    parser = html_boards.DETAIL_MODES[cfg.get("detail_mode") or cfg["mode"]]
     delay = max(0, int(cfg.get("delay_ms", 250))) / 1000
     missing = [row for row in rows if row["url"].lower() not in described]
     failed: list[str] = []
@@ -348,7 +364,13 @@ def _apply_detail(job: dict, detail: dict) -> None:
     A date from the detail page beats the card's relative age ("20 hours ago"),
     and a description is only ever absent, so both are overwritten. The place
     is the other way round: the card is what the classifier read, so the detail
-    only fills it in when the card said nothing.
+    only fills it in when the card said nothing. Same for workplace_type: the
+    card's own "Remote" line is the employer's wording, the schema's
+    TELECOMMUTE is only a fallback for the cards that state no place at all.
+
+    Detail metadata (Xing's applicant country requirement, its validThrough)
+    is filled and never overwritten, so a card that already read the type from
+    its own badge keeps that wording.
     """
     for key in _DETAIL_OVERWRITES:
         if detail.get(key):
@@ -356,6 +378,14 @@ def _apply_detail(job: dict, detail: dict) -> None:
     for key in _DETAIL_FILLS:
         if detail.get(key) and not job.get(key):
             job[key] = detail[key]
+    if detail.get("workplace_type") and job.get("workplace_type") in (None, "unknown"):
+        job["workplace_type"] = detail["workplace_type"]
+    for key, value in (detail.get("metadata") or {}).items():
+        if value in (None, ""):
+            continue
+        meta = job.setdefault("metadata", {})
+        if meta.get(key) in (None, ""):
+            meta[key] = value
     for key in ("salary_min", "salary_max", "salary_currency"):
         if detail.get(key) is not None:
             job[key] = detail[key]
@@ -379,39 +409,74 @@ def _first_json(text: str):
         return None
 
 
-def _opencli_browser(args: list[str], profile: str | None, timeout: int) -> str:
-    """Run one `opencli browser ...` command, returning its stdout."""
+def _opencli_data(text: str):
+    """The value opencli printed, unwrapped from its 2.x envelope.
+
+    1.x printed the bare value. 2.x prints {"ok": true, "data": <value>} and
+    JSON-encodes the value when it is an object or an array, so a string is
+    decoded a second time. A failed command keeps its envelope; the caller's
+    non-zero exit check is what reports it.
+    """
+    val = _first_json(text)
+    if isinstance(val, dict) and "ok" in val and "data" in val:
+        val = val["data"]
+        if isinstance(val, str):
+            try:
+                val = json.loads(val)
+            except ValueError:
+                return val
+    return val
+
+
+def _opencli_browser(
+    session: str, args: list[str], profile: str | None, timeout: int
+) -> str:
+    """Run one `opencli browser` command, returning its stdout.
+
+    opencli 2.x takes the session as `--session <name>`; 1.x took it as a
+    positional after `browser`. The 2.x form is built first, and a 1.x install
+    is retried in the positional form so an older bridge still scans.
+    """
     import os
     import subprocess
 
-    cmd = ["opencli"]
-    if profile:
-        cmd += ["--profile", str(profile)]
-    cmd += ["browser", *args]
-    try:
-        res = subprocess.run(
-            cmd, capture_output=True, text=True, timeout=timeout,
+    def run(argv: list[str]):
+        return subprocess.run(
+            argv, capture_output=True, text=True, timeout=timeout,
             env=dict(os.environ),
         )
+
+    base = ["opencli"]
+    if profile:
+        base += ["--profile", str(profile)]
+    cmd = [*base, "browser", "--session", session, *args]
+    try:
+        res = run(cmd)
+        if res.returncode != 0 and "unknown option '--session'" in (
+            (res.stderr or "") + (res.stdout or "")
+        ):
+            res = run([*base, "browser", session, *args])
     except FileNotFoundError as exc:
         raise RuntimeError(
             "opencli not installed — see https://github.com/jackwener/opencli"
         ) from exc
     except subprocess.TimeoutExpired as exc:
         raise RuntimeError(
-            f"opencli browser {args[1]} timed out after {timeout}s — "
+            f"opencli browser {args[0]} timed out after {timeout}s — "
             "is Chrome open? (opencli doctor)"
         ) from exc
     out = (res.stdout or "").strip()
     if res.returncode != 0:
         msg = out or (res.stderr or "").strip() or f"exit {res.returncode}"
         raise RuntimeError(
-            f"opencli browser {args[1]} failed: {msg[:300]} — run `opencli doctor`"
+            f"opencli browser {args[0]} failed: {msg[:300]} — run `opencli doctor`"
         )
     return out
 
 
-def fetch_opencli_eval(board: dict, cfg: dict) -> list[dict]:
+def fetch_opencli_eval(
+    board: dict, cfg: dict, described: set[str] | None = None
+) -> list[dict]:
     """A board whose data only the browser can reach, read through OpenCLI's
     Browser Bridge (the same way X Bookmarks is read).
 
@@ -427,13 +492,19 @@ def fetch_opencli_eval(board: dict, cfg: dict) -> list[dict]:
     an empty page).
 
     scan_config keys:
-        url       page to open (the search URL, for a search-driven board)
-        js_file   adapter under scanner/js/ (or an inline `js` expression)
-        profile   OpenCLI bridge profile id when several Chromes are connected
-        session   named browser session (default "jobfit")
-        tries     default 10   evaluations before giving up
-        wait_ms   default 3000 pause between tries
-        timeout   default 120  seconds for each OpenCLI call
+        url        page to open (the search URL, for a search-driven board)
+        urls       several pages to open instead, for a board whose search
+                   returns a handful of rows per query; rows seen twice are
+                   kept once
+        js_file    adapter under scanner/js/ (or an inline `js` expression)
+        profile    OpenCLI bridge profile id when several Chromes are connected
+        session    named browser session (default "jobfit")
+        tries      default 10   evaluations before giving up
+        wait_ms    default 3000 pause between tries
+        timeout    default 120  seconds for each OpenCLI call
+        details    read each new posting's own page for the advert (see
+                   `_add_details`), with `detail_mode` naming the parser when
+                   it differs from `mode`
     """
     session = str(cfg.get("session", "jobfit"))
     profile = cfg.get("profile")
@@ -445,29 +516,63 @@ def fetch_opencli_eval(board: dict, cfg: dict) -> list[dict]:
             raise RuntimeError(f"no OpenCLI adapter at {js_path}")
         js = js_path.read_text(encoding="utf-8")
 
+    urls = cfg.get("urls") or [cfg["url"]]
+    jobs: list[dict] = []
+    seen: set[str] = set()
+    for url in urls:
+        for item in _opencli_read(url, session, profile, js, cfg, timeout):
+            if not isinstance(item, dict):
+                continue
+            key = item.get("url")
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            jobs.append(item)
+
+    rows = _normalise_rows(jobs, "opencli_eval")
+    if cfg.get("details"):
+        _add_details(rows, cfg, described or set())
+    return rows
+
+
+def _opencli_read(
+    url: str, session: str, profile: str | None, js: str, cfg: dict, timeout: int
+) -> list:
+    """Open one page in a fresh tab, evaluate the adapter until it answers,
+    and close the tab. The tab is closed even when the read raises."""
     opened = _opencli_browser(
-        [session, "tab", "new", cfg["url"], "--window", "background"], profile, timeout
+        session, ["tab", "new", url, "--window", "background"], profile, timeout
     )
-    tab = (_first_json(opened) or {}).get("page")
+    tab = (_opencli_data(opened) or {}).get("page")
     if not tab:
-        raise RuntimeError(f"opencli opened no tab for {cfg['url']}: {opened[:200]}")
+        raise RuntimeError(f"opencli opened no tab for {url}: {opened[:200]}")
     try:
         tries = max(1, int(cfg.get("tries", 10)))
+        last_error = ""
         for attempt in range(tries):
-            data = _first_json(_opencli_browser(
-                [session, "eval", js, "--tab", tab], profile, timeout
-            ))
-            if isinstance(data, list):
-                return _normalise_rows(data, "opencli_eval")
+            try:
+                out = _opencli_browser(session, ["eval", js, "--tab", tab], profile, timeout)
+            except RuntimeError as exc:
+                # An evaluation that throws is usually the page still loading
+                # (its body is not there yet), not a broken adapter, so it is
+                # waited out like a `null` answer. Broken after all, and the
+                # last message is what the raise below carries.
+                last_error = str(exc)
+                out = ""
+            else:
+                data = _opencli_data(out)
+                if isinstance(data, list):
+                    return data
             if attempt < tries - 1:
                 time.sleep(int(cfg.get("wait_ms", 3000)) / 1000)
         raise RuntimeError(
-            f"adapter returned no rows after {tries} tries at {cfg['url']} — "
-            "page shape may have changed"
+            f"adapter returned no rows after {tries} tries at {url} — "
+            f"page shape may have changed"
+            + (f"; last eval error: {last_error}" if last_error else "")
         )
     finally:
         try:  # never leave a tab behind, even when the read failed
-            _opencli_browser([session, "tab", "close", tab], profile, 60)
+            _opencli_browser(session, ["tab", "close", tab], profile, 60)
         except Exception:  # noqa: BLE001 - closing is best-effort
             pass
 

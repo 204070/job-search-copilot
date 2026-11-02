@@ -52,7 +52,8 @@ dashes. Keep the tone clear and conversational professional English.
 ## Application workflow (semi-automatic)
 
 - Agent drives my real browser via OpenCLI (`--profile <name>`; session pattern:
-  `opencli browser <session> <cmd>` — state/fill/upload/screenshot/extract),
+  `opencli browser --session <name> <cmd>`, as opencli 2.x requires — state,
+  fill, upload, screenshot, eval),
   drafts forms, emails and documents; **I review and submit**. Full automation
   comes later, once the learning loop is stable. The application runbook is
   `_docs/team/application-specialist.md`.

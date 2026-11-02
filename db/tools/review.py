@@ -118,6 +118,28 @@ MAX_PER_EMPLOYER = 2
 MAX_APPS_PER_EMPLOYER = 2
 COOLDOWN_DAYS = 7
 
+#: How far back an application still colours the shortlist. The cooldown above
+#: hides the rest of an employer's board for a week; this is the longer memory,
+#: so an employer we have already written to twice does not lead the page a
+#: month later while nothing has come back.
+APPLICATION_MEMORY_DAYS = 90
+
+#: Points taken off every posting from an employer for each application still
+#: inside `APPLICATION_MEMORY_DAYS`. Two applications to one employer should
+#: read as interest already expressed, not as a reason to send a third.
+APPLICATION_WEIGHT = -15
+
+#: Extra points off an employer that has already rejected an application inside
+#: the memory window. A rejection is the clearest evidence on file that another
+#: posting from them is not the best use of an hour.
+REJECTION_WEIGHT = -20
+
+#: A posting older than this is not a live lead. Boards keep perpetual
+#: requisitions up for a year, and a posting from last December cannot be worth
+#: an hour today, so it leaves the shortlist even while the board still lists
+#: it. It stays in the pool and in the blind-spot table, so nothing is lost.
+STALE_DAYS = 45
+
 #: How many postings the shortlist shows.
 NEXT_ROLE_LIMIT = 12
 
@@ -166,17 +188,89 @@ def employer_cooldown(
             for employer, ages in recent.items() if len(ages) >= max_apps}
 
 
+def employer_key(company: str | None) -> str:
+    """The stable key for one employer: lowercased, trimmed, spaces collapsed."""
+    return " ".join((company or "").lower().split())
+
+
+def employer_adjustment(
+    applications: int,
+    manual_weight: int = 0,
+    rejections: int = 0,
+    per_application: int = APPLICATION_WEIGHT,
+    per_rejection: int = REJECTION_WEIGHT,
+) -> int:
+    """The score change for an employer, from how often we have written to them.
+
+    `applications` counts the ones sent inside `APPLICATION_MEMORY_DAYS`, and
+    `manual_weight` is the named number in `employer_weights`. The default is
+    negative on purpose: the point is to surface an employer we have not tried
+    above one we have, not to hide the posting.
+    """
+    return (manual_weight + per_application * max(applications, 0)
+            + per_rejection * max(rejections, 0))
+
+
+def next_role_order(
+    rank: int,
+    adjusted: int,
+    score: int,
+    onsite_elsewhere: bool = False,
+) -> tuple[int, int, int, int, int]:
+    """Sort key for the shortlist: roles we can take first, then adjusted score.
+
+    `rank` is `_scope_rank`, where 0 to 2 are roles we can take (worldwide, a
+    region that names ours, or silence) and 3 to 4 are a named list that
+    excludes us or a US work bar. Grouping the first three means a Lagos or
+    unknown-scope posting at 96 is no longer buried under a worldwide posting at
+    38, while a US-only posting still cannot jump the queue on score alone.
+    """
+    return (0 if rank <= 2 else 1, 1 if onsite_elsewhere else 0,
+            -adjusted, rank, -score)
+
+
+#: Words in a location field that describe a scope rather than one office, so a
+#: posting that carries one is not read as a relocation role.
+_SCOPE_WORDS = ("remote", "anywhere", "worldwide", "global", "emea", "mea",
+                "africa", "europe", "apac", "amer", "latam", "nigeria", "lagos")
+
+
+def is_relocation_role(workplace_type: str | None, location: str | None) -> bool:
+    """Whether the posting is a relocation role rather than a remote one.
+
+    An office or hybrid posting in another country is not a bar on eligibility,
+    but it is not the remote work being searched for either, so it sinks below
+    every remote posting. A posting in the user's own country is local work and
+    stays in the main group. A workplace type of `unknown` beside a named
+    foreign place counts too: an empty type is silence, a city is an office.
+    """
+    place = (location or "").lower()
+    local = "nigeria" in place or "lagos" in place
+    kind = (workplace_type or "").lower()
+    if kind == "remote":
+        return False
+    if kind in ("onsite", "hybrid"):
+        return not local
+    if not place or local:
+        return False
+    return not any(word in place for word in _SCOPE_WORDS)
+
+
 def follow_up_action(
     status: str,
     applied_days: int | None,
     has_signal: bool,
     due_on: str | None,
     today: str,
+    followed_up_days: int | None = None,
 ) -> str:
     """What (if anything) this application needs, as a short phrase.
 
     `due_on` is an explicit scheduled follow-up date, and it outranks the day
-    count, because a scheduled date is a decision already made.
+    count, because a scheduled date is a decision already made. `followed_up_days`
+    is how long ago our own last follow-up went out; inside the waiting window it
+    silences the "consider a follow-up" prompt, because the note is already sent
+    and asking again would send a second one.
     """
     if status == "ready_to_apply":
         return "submit it"
@@ -191,6 +285,8 @@ def follow_up_action(
                 else f"follow up on {due_on}")
     if has_signal:
         return "no action (a reply is on record)"
+    if followed_up_days is not None and followed_up_days < FOLLOW_UP_AFTER_DAYS:
+        return f"followed up {followed_up_days}d ago; nudge after day {FOLLOW_UP_AFTER_DAYS}"
     if applied_days is None:
         return "no action (no submission date)"
     if applied_days >= FOLLOW_UP_AFTER_DAYS:
@@ -212,6 +308,11 @@ SELECT a.id AS app_id, a.job_id, a.status AS app_status, a.applied_at,
          WHERE e.application_id = a.id AND e.event_type = 'follow_up'
            AND e.scheduled_for IS NOT NULL
            AND json_extract(e.metadata, '$.done') IS NULL) AS due_follow_up,
+       (SELECT MAX(COALESCE(json_extract(e.metadata, '$.done_at'), e.occurred_at))
+          FROM application_events e
+         WHERE e.application_id = a.id AND e.event_type = 'follow_up'
+           AND (e.scheduled_for IS NULL
+                OR json_extract(e.metadata, '$.done') = 1)) AS last_follow_up,
        (SELECT COUNT(*) FROM application_events e
          WHERE e.application_id = a.id) AS n_events
   FROM applications a
@@ -232,6 +333,83 @@ def _count(conn: sqlite3.Connection, sql: str) -> int:
     return conn.execute(sql).fetchone()[0]
 
 
+def _employer_weights(conn: sqlite3.Connection) -> dict[str, tuple[int, str]]:
+    """The named weights, keyed by `employer_key`, as `{key: (weight, reason)}`.
+
+    A database that has not run migration 0007 yet still renders the digest, so
+    a missing table reads as "no named weights" rather than an error.
+    """
+    try:
+        rows = conn.execute(
+            "SELECT company_key, weight, reason FROM employer_weights").fetchall()
+    except sqlite3.OperationalError:
+        return {}
+    return {row["company_key"]: (row["weight"], row["reason"]) for row in rows}
+
+
+def _skipped_countries(conn: sqlite3.Connection) -> dict[str, dict]:
+    """The countries the user does not apply to, keyed by country.
+
+    Each value is `{"terms": [...], "text_terms": [...], "reason": str}`, where
+    the terms are compiled regular expressions. `terms` reads the location
+    fields; `text_terms` reads the ad text and holds only phrasings that declare
+    where the work sits, because a description names offices and customers too.
+
+    A database that has not run migration 0008 yet still renders the digest, so
+    a missing table reads as "no skipped countries" rather than an error. A row
+    whose terms parse to nothing is ignored rather than allowed to match
+    everything.
+    """
+    try:
+        rows = conn.execute(
+            "SELECT country_key, terms, reason,"
+            "       coalesce(terms_in_text, '[]') AS terms_in_text"
+            " FROM skipped_countries").fetchall()
+    except sqlite3.OperationalError:
+        return {}
+    out: dict[str, dict] = {}
+    for row in rows:
+        patterns, text_patterns = [], []
+        for column, target in (("terms", patterns),
+                               ("terms_in_text", text_patterns)):
+            try:
+                raw = json.loads(row[column] or "[]")
+            except ValueError:
+                continue
+            target += [re.compile(t, re.I) for t in raw
+                       if isinstance(t, str) and t]
+        if patterns or text_patterns:
+            out[row["country_key"]] = {"terms": patterns,
+                                       "text_terms": text_patterns,
+                                       "reason": row["reason"]}
+    return out
+
+
+def _skipped_country_of(row, skipped: dict[str, dict]) -> str | None:
+    """The first skipped-country key this posting matches, or None.
+
+    `location` and `region_evidence` are read first: they are where a board puts
+    the country, and a place name there almost always means the job sits there.
+    Only when both are empty is the ad text read, and only with the tighter
+    phrasings, because a description names a company's offices and customers.
+    """
+    if not skipped:
+        return None
+    hay = " ".join(str(row[k] or "") for k in ("location", "region_evidence"))
+    if hay.strip():
+        for key, spec in skipped.items():
+            if any(p.search(hay) for p in spec["terms"]):
+                return key
+        return None
+    text = row["raw_text"] if "raw_text" in row.keys() else ""
+    if not text:
+        return None
+    for key, spec in skipped.items():
+        if any(p.search(text) for p in spec["text_terms"]):
+            return key
+    return None
+
+
 def _matcher():
     """The scanner's title gate, or None when the scanner cannot be loaded.
 
@@ -247,6 +425,12 @@ def _matcher():
         return Matcher()
     except (ImportError, OSError, ValueError):
         return None
+
+
+def _is_stale(row: dict, today: date, days: int = STALE_DAYS) -> bool:
+    """Whether the posting date is older than the shortlist will show."""
+    moment = _posted(row)
+    return moment > _EPOCH and (today - moment.date()).days > days
 
 
 def _admits(matcher, title: str | None) -> bool:
@@ -452,7 +636,11 @@ def section_needs_you(conn, apps, today: date) -> list[str]:
                 f"({row['company']}): {row['title']}. Materials are prepared.")
         elif status == "applied":
             days = days_since(row["applied_at"], today)
-            if days is not None and days >= FOLLOW_UP_AFTER_DAYS and not row["last_signal"] and not due:
+            followed = days_since(row["last_follow_up"], today)
+            if (days is not None and days >= FOLLOW_UP_AFTER_DAYS
+                    and not row["last_signal"] and not due
+                    and not (followed is not None
+                             and followed < FOLLOW_UP_AFTER_DAYS)):
                 items.append(
                     f"- [ ] **Consider a follow-up**: application #{row['app_id']} "
                     f"({row['company']}) is {days} days out with no employer "
@@ -477,7 +665,9 @@ def section_applications(apps, today: date) -> list[str]:
            "rejection, or a reply that moves no status). Our own notes and the "
            "submission itself are not contact, so they never clear the reminder: "
            f"at {FOLLOW_UP_AFTER_DAYS} days with none, the next action changes "
-           "from waiting to suggesting a follow-up.", ""]
+           "from waiting to suggesting a follow-up. Our own follow-up is not "
+           "contact either, but a sent one quiets the suggestion until the same "
+           "window passes again.", ""]
     rows = []
     for row in apps:
         age = days_since(row["applied_at"], today)
@@ -489,7 +679,8 @@ def section_applications(apps, today: date) -> list[str]:
             f"{age}d" if age is not None else "-",
             (row["last_signal"] or "-")[:10],
             follow_up_action(row["app_status"], age, bool(row["last_signal"]),
-                             row["due_follow_up"], today.isoformat()),
+                             row["due_follow_up"], today.isoformat(),
+                             days_since(row["last_follow_up"], today)),
         ])
     out += _table(["app", "employer", "role", "status", "age", "last signal",
                    "next action"], rows)
@@ -500,10 +691,12 @@ def section_applications(apps, today: date) -> list[str]:
 def section_next_roles(conn, today: date) -> list[str]:
     """Section 4: bookmarked postings worth a look, and what the gate leaves out."""
     out = ["## 4. Next roles", ""]
-    ranked = conn.execute(
-        "SELECT id, title, company, region_scope, region_evidence, match_score"
+    ranked = [dict(r) for r in conn.execute(
+        "SELECT id, title, company, region_scope, region_evidence, match_score,"
+        "       location, workplace_type, posted_at, bookmarked_at, created_at,"
+        "       raw_text"
         " FROM jobs WHERE status = 'bookmarked'"
-        "   AND id NOT IN (SELECT job_id FROM applications)").fetchall()
+        "   AND id NOT IN (SELECT job_id FROM applications)").fetchall()]
     matcher = _matcher()
     # Employers we have already applied to twice inside the cooldown window. The
     # rule lives in `employer_cooldown`, so it is one definition, tested once.
@@ -514,38 +707,140 @@ def section_next_roles(conn, today: date) -> list[str]:
                 " WHERE a.applied_at IS NOT NULL"
                 "   AND a.status NOT IN ('withdrawn', 'archived')").fetchall()]
     cooling = employer_cooldown(sent)
-    # Coverage-aware order from the classifier: a posting that names a region
-    # we are in (EMEA, Africa) is better information than one that says
-    # nothing, so it ranks above `unknown` rather than below it. Score breaks
-    # the tie, so a worldwide posting is never buried under a US-only one.
-    ranked.sort(key=lambda r: (_scope_rank(r["region_scope"], r["region_evidence"]),
-                               -(r["match_score"] or 0)))
+    # How often we have already written to each employer inside the memory
+    # window, and the named weights. Both are derived or stored data, so the
+    # order changes without a code edit.
+    written: dict[str, int] = {}
+    for row in conn.execute(
+            "SELECT j.company AS company, a.applied_at AS applied_at"
+            " FROM applications a JOIN jobs j ON j.id = a.job_id"
+            " WHERE a.applied_at IS NOT NULL AND a.status != 'withdrawn'").fetchall():
+        age = days_since(row["applied_at"], today)
+        if age is not None and age <= APPLICATION_MEMORY_DAYS:
+            key = employer_key(row["company"])
+            written[key] = written.get(key, 0) + 1
+    rejected: dict[str, int] = {}
+    for row in conn.execute(
+            "SELECT j.company AS company, a.applied_at AS applied_at"
+            " FROM applications a JOIN jobs j ON j.id = a.job_id"
+            " WHERE a.applied_at IS NOT NULL AND a.status = 'rejected'").fetchall():
+        age = days_since(row["applied_at"], today)
+        if age is not None and age <= APPLICATION_MEMORY_DAYS:
+            key = employer_key(row["company"])
+            rejected[key] = rejected.get(key, 0) + 1
+    manual = _employer_weights(conn)
+    # Countries the user does not apply to. They leave the shortlist without
+    # leaving the pool, so deleting one row brings the postings back.
+    skipped = _skipped_countries(conn)
+    skipped_hits: dict[str, int] = {}
+    skipped_ids: set[int] = set()
+    for row in ranked:
+        key = employer_key(row["company"])
+        row["adjust"] = employer_adjustment(written.get(key, 0),
+                                            manual.get(key, (0, ""))[0],
+                                            rejected.get(key, 0))
+        row["applications"] = written.get(key, 0)
+    # Coverage-aware order from the classifier, with the employer adjustment
+    # applied to the score first. A posting that names a region we are in
+    # (EMEA, Africa) or says nothing is one we can take, so it competes with a
+    # worldwide posting on merit; a US-only one sinks below both, and an office
+    # or hybrid role abroad sinks below every remote one.
+    ranked.sort(key=lambda r: next_role_order(
+        _scope_rank(r["region_scope"], r["region_evidence"]),
+        (r["match_score"] or 0) + r["adjust"],
+        r["match_score"] or 0,
+        is_relocation_role(r["workplace_type"], r["location"])))
+    # Count the skipped-country postings over the whole list, not inside the
+    # loop below: that loop stops as soon as the table is full, so a count kept
+    # there would report zero whenever the first twelve rows were all takeable.
+    for row in ranked:
+        if (row["match_score"] or 0) < RELEVANT_FLOOR and not _admits(
+                matcher, row["title"]):
+            continue
+        country = _skipped_country_of(row, skipped)
+        if country:
+            skipped_hits[country] = skipped_hits.get(country, 0) + 1
+            skipped_ids.add(row["id"])
     # Drop the score-0 junk the feeds carry (writers, sales, assistants) while
     # keeping a score-0 posting whose title the gate admits, since "right kind
     # of role, nothing we recognise in the text" is a judgement for a human.
     top: list = []
     per_employer: dict[str, int] = {}
+    seen_roles: set[tuple[str, str]] = set()
+    stale = 0
     for row in ranked:
         if (row["match_score"] or 0) < RELEVANT_FLOOR and not _admits(
                 matcher, row["title"]):
+            continue
+        if row["id"] in skipped_ids:
+            continue
+        if _is_stale(row, today):
+            stale += 1
             continue
         if row["company"] in cooling:
             continue
         if per_employer.get(row["company"], 0) >= MAX_PER_EMPLOYER:
             continue
+        # The same role reposted on the same board with a fresh id is one lead,
+        # not two: keep the first, which is the better-ranked copy.
+        role_key = (employer_key(row["company"]),
+                    " ".join((row["title"] or "").lower().split()))
+        if role_key in seen_roles:
+            continue
+        seen_roles.add(role_key)
         per_employer[row["company"]] = per_employer.get(row["company"], 0) + 1
         top.append(row)
         if len(top) >= NEXT_ROLE_LIMIT:
             break
 
-    out += ["Ordered by where the posting hires first, then by score: "
-            "worldwide, then a named region that includes you (EMEA, Africa), "
-            "then unknown, then a named list that excludes you, then US-only. "
+    out += ["Ordered by score among the roles you can take (worldwide, a named "
+            "region that includes you, or silence), then the rest, so a US-only "
+            "posting cannot jump the queue on score alone. An office or hybrid "
+            f"role abroad sits below every remote one, and a posting older than "
+            f"{STALE_DAYS} days leaves the table. `where` is the posting's own "
+            "location or the phrase that set its scope. `adjust` is employer "
+            f"history: {APPLICATION_WEIGHT} for each application sent in the "
+            f"last {APPLICATION_MEMORY_DAYS} days, {REJECTION_WEIGHT} for each "
+            "rejection, plus any named weight. "
             f"At most {MAX_PER_EMPLOYER} per employer, so one company cannot "
             "fill the page:", ""]
-    out += _table(["job", "role", "employer", "scope", "score"],
-                  [[f"#{r['id']}", (r['title'] or '')[:42], r['company'],
-                    r['region_scope'], r['match_score']] for r in top])
+    out += _table(["job", "role", "employer", "scope", "where", "score", "adjust"],
+                  [[f"#{r['id']}", (r['title'] or '')[:34], r['company'],
+                    r['region_scope'],
+                    ((r["location"] or r["region_evidence"] or "-"))[:22],
+                    r['match_score'],
+                    f"{r['adjust']:+d}" if r["adjust"] else "-"] for r in top])
+
+    if any(r["adjust"] for r in top):
+        out += ["", "**Why the adjustment.** An employer we have already written "
+                f"to loses {APPLICATION_WEIGHT} for each application sent in the "
+                f"last {APPLICATION_MEMORY_DAYS} days and {REJECTION_WEIGHT} for "
+                "each rejection in the same window, so a new employer surfaces "
+                "above one that has already said no. A named weight adds to that. "
+                "Change one with `python3 -m db.tools.review employer`:", ""]
+        if manual:
+            out += _table(
+                ["employer", "weight", "reason"],
+                [[key, f"{weight:+d}", reason]
+                 for key, (weight, reason) in sorted(manual.items())])
+
+    if stale:
+        out += ["", f"**Older than {STALE_DAYS} days.** {stale} posting(s) that "
+                "pass the gate are left out of the table above because the "
+                "posting date is older than that. They stay in the pool, and "
+                "`python3 -m db.tools.review dismiss --job N --reason \"...\"` "
+                "is how one leaves for good."]
+
+    if skipped_hits:
+        out += ["", "**Skipped countries.** "
+                f"{sum(skipped_hits.values())} posting(s) that pass the gate are "
+                "left out of the table above because their location, or the "
+                "posting text when the location is blank, names a country you do "
+                "not apply to. They stay in the pool, so removing the country "
+                "brings them back without a rescan:", ""]
+        out += _table(["country", "left out", "why"],
+                      [[key, str(n), skipped[key]["reason"]]
+                       for key, n in sorted(skipped_hits.items())])
 
     if cooling:
         hidden = sum(
@@ -568,7 +863,8 @@ def section_next_roles(conn, today: date) -> list[str]:
         out += _table(["employer", "applications", "next look", "clears"],
                       cool_rows)
 
-    total, empty, samples = _blind_spot(conn, exclude_ids={r["id"] for r in top})
+    total, empty, samples = _blind_spot(
+        conn, exclude_ids={r["id"] for r in top} | skipped_ids)
     out += ["", f"**Nothing matched in {total} admitted postings.** The title "
             "gate accepts them, the ad text names none of the stack, so they "
             "score 0 and stay out of the table above. "
@@ -740,8 +1036,10 @@ def cmd_digest(conn: sqlite3.Connection, args: argparse.Namespace) -> int:
             if follow_up_action(r["app_status"],
                                 days_since(r["applied_at"], today),
                                 bool(r["last_signal"]), r["due_follow_up"],
-                                today.isoformat()).startswith(("submit", "consider",
-                                                                "follow up"))]
+                                today.isoformat(),
+                                days_since(r["last_follow_up"], today)
+                                ).startswith(("submit", "consider",
+                                              "follow up"))]
     moved = "since " + since.replace("T", " ").replace("Z", " UTC") if since else "first run"
     open_todos = _count(conn, "SELECT COUNT(*) FROM open_todos")
     print(f"rewrote {path}  ({len(apps)} application(s), {len(wait)} needing "
@@ -750,6 +1048,115 @@ def cmd_digest(conn: sqlite3.Connection, args: argparse.Namespace) -> int:
         print(f"  #{row['app_id']} {row['company']}: {row['title']}")
     for row in conn.execute("SELECT id, text, owner FROM open_todos"):
         print(f"  todo #{row['id']} [{row['owner']}] {row['text']}")
+    return 0
+
+
+def cmd_country(conn: sqlite3.Connection, args: argparse.Namespace) -> int:
+    """Keep the list of countries the user does not apply to, with its reasons.
+
+    A posting whose location names one of these countries leaves the shortlist
+    without leaving the pool, so the decision is reversible: remove the row and
+    the postings are back. The terms are regular expressions because one country
+    has several spellings on these boards, including city names that never say
+    the country at all.
+
+    `--term` reads the location fields and `--text-term` reads the ad text. The
+    second list exists because some boards leave the location empty and declare
+    the place in the first line of the description. It is applied only when the
+    location fields say nothing, so keep its patterns to phrasings that declare
+    where the work sits: a company also names its offices and its customers.
+    """
+    if args.remove:
+        key = args.remove.strip().lower()
+        cur = conn.execute("DELETE FROM skipped_countries WHERE country_key = ?", (key,))
+        conn.commit()
+        print(f"removed {key}" if cur.rowcount else f"no skipped country {key}")
+        return 0
+    if args.add:
+        if not args.reason:
+            print("--add needs --reason")
+            return 1
+        if not args.term and not args.text_term:
+            print("--add needs at least one --term or --text-term"
+                  " (a case-insensitive regex)")
+            return 1
+        key = args.add.strip().lower()
+        conn.execute(
+            "INSERT INTO skipped_countries"
+            " (country_key, terms, terms_in_text, reason, updated_at)"
+            " VALUES (?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))"
+            " ON CONFLICT(country_key) DO UPDATE SET terms = excluded.terms,"
+            " terms_in_text = excluded.terms_in_text, reason = excluded.reason,"
+            " updated_at = excluded.updated_at",
+            (key, json.dumps(args.term or []),
+             json.dumps(args.text_term or []), args.reason))
+        conn.commit()
+        print(f"{key}: {len(args.term or [])} location term(s),"
+              f" {len(args.text_term or [])} text term(s)  {args.reason}")
+        return 0
+    rows = conn.execute(
+        "SELECT country_key, terms, reason, updated_at,"
+        "       coalesce(terms_in_text, '[]') AS terms_in_text"
+        " FROM skipped_countries ORDER BY country_key").fetchall()
+    if not rows:
+        print("no skipped countries stored")
+        return 0
+    for row in rows:
+        terms, text_terms = [], []
+        for column, target in (("terms", terms),
+                               ("terms_in_text", text_terms)):
+            try:
+                target += json.loads(row[column] or "[]")
+            except ValueError:
+                pass
+        print(f"{row['country_key']:<16} {len(terms)} location term(s),"
+              f" {len(text_terms)} text term(s)"
+              f"  {row['reason']}  (set {row['updated_at'][:10]})")
+        for term in terms:
+            print(f"    location  {term}")
+        for term in text_terms:
+            print(f"    text      {term}")
+    return 0
+
+
+def cmd_employer(conn: sqlite3.Connection, args: argparse.Namespace) -> int:
+    """Keep a named score weight per employer, with the reason beside it.
+
+    The shortlist already counts how often we have written to an employer. This
+    is the part a count cannot know: requirements that sit outside the record,
+    or a history that makes a rejection likely. The weight is data, so the
+    decision is changed here rather than by editing the digest.
+    """
+    if args.remove:
+        key = employer_key(args.remove)
+        cur = conn.execute("DELETE FROM employer_weights WHERE company_key = ?", (key,))
+        conn.commit()
+        print(f"removed weight for {key}" if cur.rowcount
+              else f"no weight stored for {key}")
+        return 0
+    if args.set:
+        if args.weight is None or not args.reason:
+            print("--set needs --weight and --reason")
+            return 1
+        key = employer_key(args.set)
+        conn.execute(
+            "INSERT INTO employer_weights (company_key, weight, reason, updated_at)"
+            " VALUES (?, ?, ?, strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))"
+            " ON CONFLICT(company_key) DO UPDATE SET weight = excluded.weight,"
+            " reason = excluded.reason, updated_at = excluded.updated_at",
+            (key, args.weight, args.reason))
+        conn.commit()
+        print(f"{key}: {args.weight:+d}  {args.reason}")
+        return 0
+    rows = conn.execute(
+        "SELECT company_key, weight, reason, updated_at FROM employer_weights"
+        " ORDER BY weight, company_key").fetchall()
+    if not rows:
+        print("no employer weights stored")
+        return 0
+    for row in rows:
+        print(f"{row['company_key']:<28} {row['weight']:+4d}  {row['reason']}"
+              f"  (set {row['updated_at'][:10]})")
     return 0
 
 
@@ -981,6 +1388,74 @@ def cmd_selftest() -> int:
             failures += 1
             print(f"FAIL  {status} days={days} signal={signal} due={due}\n"
                   f"      expected {expected!r}\n      got      {got!r}")
+    # A follow-up already sent is not a follow-up still to send: inside the
+    # waiting window the prompt goes quiet, and it comes back once the window
+    # passes with still no reply.
+    followed_cases = [
+        ((9, 2), "followed up 2d ago; nudge after day 7"),
+        ((3, 1), "followed up 1d ago; nudge after day 7"),
+        ((9, 7), "consider a follow-up (out 9 days)"),
+        ((9, 40), "consider a follow-up (out 9 days)"),
+    ]
+    for (days, followed), expected in followed_cases:
+        got = follow_up_action("applied", days, False, None, today, followed)
+        if got != expected:
+            failures += 1
+            print(f"FAIL  followed_up_days={followed} days={days}\n"
+                  f"      expected {expected!r}\n      got      {got!r}")
+    if follow_up_action("applied", 9, False, None, today, 2) != \
+            follow_up_action("applied", 9, False, None, today, 2):
+        failures += 1
+        print("FAIL  follow-up suppression is not stable")
+
+    # Employer history: every application inside the memory window takes points
+    # off, a named weight adds to that, and a negative count is not a credit.
+    adjust_cases = [
+        ((0, 0), 0),
+        ((2, 0), 2 * APPLICATION_WEIGHT),
+        ((2, -25), 2 * APPLICATION_WEIGHT - 25),
+        ((-3, 0), 0),
+    ]
+    for (apps, manual_weight), expected in adjust_cases:
+        got = employer_adjustment(apps, manual_weight)
+        if got != expected:
+            failures += 1
+            print(f"FAIL  employer_adjustment({apps}, {manual_weight}) = {got}, "
+                  f"expected {expected}")
+
+    # Order: a takeable role at 96 outranks a worldwide one at 38 once employer
+    # history is applied, and a US-only 99 still sinks below both.
+    if not next_role_order(2, 96, 96) < next_role_order(0, 38, 38):
+        failures += 1
+        print("FAIL  a takeable 96 must outrank a worldwide 38")
+    if not next_role_order(0, 20, 20) < next_role_order(4, 99, 99):
+        failures += 1
+        print("FAIL  a US-only 99 must still sink below a takeable 20")
+    if employer_key("  M-KOPA   Nigeria ") != "m-kopa nigeria":
+        failures += 1
+        print("FAIL  employer_key does not normalise")
+    if employer_adjustment(1, 0, 1) != APPLICATION_WEIGHT + REJECTION_WEIGHT:
+        failures += 1
+        print("FAIL  a rejection does not add its own weight")
+
+    # Relocation: an office abroad is not a remote lead, while a remote posting
+    # with a city beside it stays one, and a local office is local work.
+    relocation_cases = [
+        (("unknown", "Berlin"), True),
+        (("unknown", "Oeiras or Krakow or Dublin"), True),
+        (("onsite", "Lagos, Nigeria"), False),
+        (("hybrid", "Lagos, Nigeria"), False),
+        (("remote", "Berlin"), False),
+        (("unknown", "Remote - EMEA"), False),
+        (("unknown", None), False),
+    ]
+    for (kind, place), expected in relocation_cases:
+        got = is_relocation_role(kind, place)
+        if got != expected:
+            failures += 1
+            print(f"FAIL  is_relocation_role({kind!r}, {place!r}) = {got}, "
+                  f"expected {expected}")
+
     if days_since("2026-10-11T00:00:00Z", date(2026, 10, 18)) != 7:
         failures += 1
         print("FAIL  days_since did not measure 7 days")
@@ -1081,6 +1556,71 @@ def cmd_selftest() -> int:
             print(f"FAIL  employer_cooldown: {why}\n"
                   f"      expected {expected!r}\n      got      {got!r}")
 
+    # Skipped countries: the location fields decide first, and the ad text is
+    # read only when they say nothing. The text list holds phrasings that
+    # declare where the work sits, so a company naming its team or its offices
+    # does not hide a worldwide posting.
+    india = {"india": {
+        "terms": [re.compile(r"\bindia\b", re.I),
+                  re.compile(r"(?:^|[,|]\s*)IN\s*(?:[,|]|$)", re.I),
+                  re.compile(r"\b(?:bangalore|bengaluru|mumbai|pune)\b", re.I)],
+        "text_terms": [
+            re.compile(r"\b(?:based|located|office|position)\s+(?:in|at)\s+"
+                       r"(?:bangalore|bengaluru)\b", re.I),
+            re.compile(r"\b(?:engineer|developer|position|role|candidate)\b"
+                       r"[^.\n]{0,40}\bbased in india\b", re.I),
+            re.compile(r"\bremote\s*[-–—(]\s*india\b", re.I),
+            re.compile(r"\blocation\s*[:\-–—]\s*(?:remote\s*[-–—(]?\s*)?"
+                       r"(?:india|bangalore|bengaluru)\b", re.I),
+        ],
+        "reason": "test",
+    }}
+    country_cases = [
+        ({"location": "India", "region_evidence": "India", "raw_text": ""},
+         "india", "the country named as the location"),
+        ({"location": "KA, IN | Bengaluru, KA, IN", "region_evidence": "",
+          "raw_text": ""}, "india", "a city and the two-letter code"),
+        ({"location": "", "region_evidence": "",
+          "raw_text": "This is a Fulltime position based in Bangalore ."},
+         "india", "an empty location, with the city declared in the text"),
+        ({"location": "", "region_evidence": "",
+          "raw_text": "We are hiring a Product Engineer based in India who will "
+                      "ship features."},
+         "india", "a role noun beside 'based in <country>'"),
+        ({"location": "", "region_evidence": "",
+          "raw_text": "Location - India (Remote) Build the network."},
+         "india", "a location line that starts with the country"),
+        ({"location": "", "region_evidence": "",
+          "raw_text": "Remote - India. Reports to the CTO."},
+         "india", "'Remote - <country>' in the text"),
+        ({"location": "Philippines", "region_evidence": "",
+          "raw_text": "A company with most of our team based in India and the "
+                      "Philippines."},
+         None, "a team named in the text is not the job's location"),
+        ({"location": "Remote, USA", "region_evidence": "Remote, USA",
+          "raw_text": "Location: North America, LATAM, or India"},
+         None, "a multi-region list is not an India role"),
+        ({"location": "", "region_evidence": "",
+          "raw_text": "We have offices in Bangalore, Berlin and Austin."},
+         None, "an office named in the text is not the job's location"),
+        ({"location": "", "region_evidence": "",
+          "raw_text": "Our team is based in India."},
+         None, "no role noun beside the country, so no match"),
+        ({"location": "Remote", "region_evidence": "",
+          "raw_text": "This position is based in Bangalore."},
+         None, "a stated location is never overridden by the text"),
+    ]
+    for row, expected, why in country_cases:
+        got = _skipped_country_of(row, india)
+        if got != expected:
+            failures += 1
+            print(f"FAIL  skipped country: {why}\n"
+                  f"      expected {expected!r}\n      got      {got!r}")
+    if _skipped_country_of({"location": "India", "region_evidence": "",
+                            "raw_text": ""}, {}) is not None:
+        failures += 1
+        print("FAIL  no skipped countries must match nothing")
+
     # What clears the follow-up reminder: employer contact only. Our own notes
     # and our own follow-ups must never count as contact, because the applications
     # most likely to be documented are the ones most likely to go unanswered.
@@ -1093,8 +1633,10 @@ def cmd_selftest() -> int:
             failures += 1
             print(f"FAIL  {theirs!r} is employer contact and must be a signal")
 
-    total = (len(cases) + 2 + len(rank_cases) + 1 + len(order_cases)
-             + len(label_cases) + len(cool_cases) + len(SIGNAL_EVENT_TYPES))
+    total = (len(cases) + 2 + len(followed_cases) + 1 + len(adjust_cases) + 4
+             + len(relocation_cases) + len(rank_cases) + 1 + len(order_cases)
+             + len(label_cases) + len(cool_cases) + len(country_cases) + 1
+             + len(SIGNAL_EVENT_TYPES))
     print(f"{total - failures}/{total} cases pass")
     return 1 if failures else 0
 
@@ -1156,6 +1698,30 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--context", help="where it came from, why it is wanted")
     p.add_argument("--close", type=int, metavar="ID", help="close a todo by id")
     p.set_defaults(func=cmd_todo)
+
+    p = sub.add_parser("employer",
+                       help="set, list or remove an employer score weight")
+    p.add_argument("--set", metavar="COMPANY",
+                   help="employer name to weight")
+    p.add_argument("--weight", type=int,
+                   help="points added to each of their postings (negative demotes)")
+    p.add_argument("--reason", help="why, in one line")
+    p.add_argument("--remove", metavar="COMPANY", help="drop the weight")
+    p.set_defaults(func=cmd_employer)
+
+    p = sub.add_parser("country",
+                       help="set, list or remove a country to skip")
+    p.add_argument("--add", metavar="COUNTRY", help="country key to skip")
+    p.add_argument("--term", action="append", metavar="REGEX",
+                   help="case-insensitive regex matched against location and"
+                        " region_evidence (repeatable)")
+    p.add_argument("--text-term", action="append", metavar="REGEX",
+                   help="case-insensitive regex matched against the posting"
+                        " text, used only when the location is empty"
+                        " (repeatable)")
+    p.add_argument("--reason", help="why, in one line")
+    p.add_argument("--remove", metavar="COUNTRY", help="drop the country")
+    p.set_defaults(func=cmd_country)
 
     p = sub.add_parser("selftest", help="check the decision logic on fixed cases")
     p.set_defaults(func=lambda conn, args: cmd_selftest())

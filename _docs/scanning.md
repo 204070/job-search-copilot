@@ -11,26 +11,31 @@ against `scanner/keywords.jsonc`, and appends new matches to
 |---|---|---|---|
 | `rss`     | `scanner/fetchers.fetch_rss`     | `feed_url`, or `feed_urls` for several | RSS 2.0, namespace-tolerant; repairs bare `&`/double-encoded entities; reads `content:encoded` when `description` is empty; recovers an employer embedded in the title (WWR, Himalayas, Real Work From Anywhere); a posting listed in two of a board's category feeds is stored once |
 | `api`     | `scanner/fetchers.fetch_api`     | `source` (`remotive`/`remoteok`/`mapped`), `endpoint` | public JSON APIs; `mapped` needs no code — see below |
-| `jobspy`  | `scanner/fetchers.fetch_jobspy`  | `source`, `search_term`, `location`, `results_wanted`, `hours_old` | needs `pip install python-jobspy` |
-| `html`    | `scanner/fetchers.fetch_html` (mode-dispatched) | `mode` (+ mode keys: `pages`, `details`, `delay_ms` for the list parsers; `profile_dir`, `scrolls`, `cap` for `x_bookmarks`; `url`, `profile`, `session`, `js_file`, `tries`, `wait_ms` for `opencli_eval`; `on_demand` for any of them) | browser-scraped and server-rendered boards; unknown `mode` = "not scanned yet" |
+| `jobspy`  | `scanner/fetchers.fetch_jobspy`  | `source`, `search_term`, `location`, `results_wanted`, `hours_old`, `linkedin_fetch_description`, `is_remote` | needs `pip install python-jobspy`; see [LinkedIn](#linkedin-jobspy-what-the-search-actually-does) |
+| `html`    | `scanner/fetchers.fetch_html` (mode-dispatched) | `mode` (+ mode keys: `pages`, `details`, `delay_ms` for the list parsers; `profile_dir`, `scrolls`, `cap` for `x_bookmarks`; `url` or `urls`, `profile`, `session`, `js_file`, `tries`, `wait_ms`, `detail_mode` for `opencli_eval`; `on_demand` for any of them) | browser-scraped and server-rendered boards; unknown `mode` = "not scanned yet" |
 | `manual`  | never auto-scanned | — | e.g. saved Google searches, dead boards |
 
 Two config keys cut work out of a run without changing what a board is:
 
 - **`on_demand`** keeps a board out of a full run (`python3 -m scanner`): it
-  scans only when named, `python3 -m scanner --board NAME`. X Bookmarks is set
-  this way, because it reads your own logged-in Chrome and you want to decide
-  when that happens. The run report names it and says so rather than staying
-  silent. (`scan_strategy: manual` is the stronger form: never scanned at all,
-  even when named, which is right for a board with nothing to fetch.)
+  scans only when named, `python3 -m scanner --board NAME`, and the run report
+  names it and says so rather than staying silent. X Bookmarks is set this way,
+  because it reads your own logged-in Chrome and you want to decide when that
+  happens; Xing joined it on 22/10 at the user's request. (`scan_strategy:
+  manual` is the stronger form: never scanned at all, even when named, which is
+  right for a board with nothing to fetch. The board's own config stays in
+  `scan_config` either way, so switching back is one key.)
 - **`details`** asks for one extra request per *new* posting, described under
   [Server-rendered list boards](#server-rendered-list-boards-jsgurujobs-javascript_jobs).
+  For a board read through the browser, name its detail parser with
+  `detail_mode` (the list `mode` there is `opencli_eval`, which is not a
+  parser), and see [Xing](#xing-mode-opencli_eval-with-a-detail-pass).
 
 The `html` modes, cheapest first:
 
 | mode | what it reads | code |
 |---|---|---|
-| `jsgurujobs`, `javascript_jobs` | plain server-rendered listing pages, fetched with `_http_get` and parsed by anchored patterns | `scanner/html_boards.py` (pure parsers + selftest) |
+| `jsgurujobs`, `javascript_jobs`, `relocate_me` | plain server-rendered listing pages, fetched with `_http_get` and parsed by anchored patterns | `scanner/html_boards.py` (pure parsers + selftest) |
 | `opencli_eval` | a page whose data only a browser can reach (Cloudflare 403, client-side rendering): read from your own Chrome through OpenCLI's bridge | fetcher in `scanner/fetchers.py`, site adapter in `scanner/js/<js_file>` |
 | `x_bookmarks_cli` | your X bookmarks, same bridge | `scanner/fetchers.py` |
 | `x_bookmarks` | your X bookmarks from a persistent Playwright profile (dormant fallback) | `scanner/fetchers.py` |
@@ -54,14 +59,15 @@ branch in `fetch_api` only when a board needs real logic.
 
 Active sources: WWR (three category feeds: programming, full-stack, devops),
 Himalayas (RSS), Real Work From Anywhere (RSS), Jobspresso (dev-category RSS),
-JS Guru Jobs and JavaScript Jobs (server-rendered HTML lists, with the posting's
-own page read for new rows), Jobicy (mapped API), Remotive + RemoteOK (APIs),
-Indeed/LinkedIn/ZipRecruiter (JobSpy), HiringCafe and Work at a Startup
-(browser-read searches, need Chrome), X Bookmarks (OpenCLI/Playwright, your own
-session — `on_demand`). ZipRecruiter currently returns 403 from this network;
-LinkedIn rate-limits. 6 `html` boards stay pending — reconnaissance status for
-each lives in `boards.notes` (migration 0009); paywalled/dormant boards
-(Remote4Africa, RemoteAfrica, Crossover) are `manual`, Cleverjobs is disabled.
+JS Guru Jobs, JavaScript Jobs and Relocate.me (server-rendered HTML lists, with
+the posting's own page read for new rows), Jobicy (mapped API), Remotive +
+RemoteOK (APIs), Indeed/LinkedIn/ZipRecruiter (JobSpy), HiringCafe, Work at a
+Startup and Xing (browser-read searches, need Chrome), X Bookmarks
+(OpenCLI/Playwright, your own session — `on_demand`). ZipRecruiter currently
+returns 403 from this network; LinkedIn rate-limits. 5 `html` boards stay
+pending — reconnaissance status for each lives in `boards.notes` (migration
+0009); paywalled/dormant boards (Remote4Africa, RemoteAfrica, Crossover) are
+`manual`, Cleverjobs is disabled.
 
 ## Aggregator boards
 
@@ -75,6 +81,32 @@ client's decision; record it against the client employer, not the board.
 A board's matching system is a separate source to evaluate. It can surface
 roles, but it does not replace the employer's own board. Check the client and
 the eligibility sentence before you fill anything.
+
+### One posting cloned across countries
+
+Some aggregators publish one role once per country, so a single advert becomes
+twenty or thirty board rows with the same body and a different country tag.
+Measured 1/11/2026 on the Jobgether Lever board: `Software Engineer - Storage`
+appeared 30 times, one per country from Argentina to the United Arab Emirates.
+Two consequences.
+
+- **The country tag is the aggregator's targeting, not the employer's list.**
+  Do not read a clone set as evidence that the employer hires in each of those
+  countries, and do not read it as a bar either. Treat the clone for the
+  applicant's own country as the row to apply to, and treat the others as
+  duplicates of it.
+- **A country named in the boilerplate is not the location.** The same benefits
+  block said "Work remotely from Slovenia" on the Nigeria, Norway, Finland,
+  Kenya and US clones alike, because the block is copied unchanged. The
+  structured fields are the ones that move: `country`, `categories.location`
+  and `categories.allLocations`. When a benefit bullet names a country the
+  headline does not, compare the clones before believing either. A line that is
+  identical on all thirty rows carries no signal at all.
+
+An aggregator that runs an AI shortlist names its client only as "a partner
+company". Record the board as the company, put the inference and its evidence
+in the application metadata, and say plainly that the employer is unconfirmed.
+Do not write a guessed employer into `jobs.company`.
 
 ## Server-rendered list boards (`jsgurujobs`, `javascript_jobs`)
 
@@ -114,6 +146,34 @@ newlines, the last member is followed by a trailing comma. About one posting in
 ten failed a document parse over damage in an unrelated member, so the fields
 are matched one by one and unescaped individually (`_ld_string`) — the parser's
 selftest feeds it the broken shape on purpose.
+
+### Relocate.me (`mode: relocate_me`)
+
+Read whole, not by query. The site's search box is a narrow phrase match: one
+common job title returned 17 of the 25 live postings, and the whole board is 24
+postings over 2 pages of 20, so reading everything and letting the scorer rank
+beats guessing a phrase. `pages: 4` leaves room for the board to grow.
+
+- **The card** carries a country (`Netherlands`, `Japan`, or `Remote`), the
+  employer, the title and a truncated preview. The country and city also sit in
+  the URL (`/netherlands/amsterdam/picnic/slug-10256`), which is where
+  `metadata.country_slug` / `city_slug` come from, and the trailing number is
+  `source_ref`.
+- **A `job_featured` card is dropped.** That is a paid advert for another job
+  board ("1700+ curated jobs"), not a posting here.
+- **The place is the useful statement.** A relocation board's premise is a visa,
+  but a role in Japan or the Netherlands is `region_gated` for a candidate in
+  West Africa, which is the honest tag. The classifier handles it; the parser
+  does not guess.
+- **The posting page** is a broken `JobPosting` JSON-LD block: every string
+  carries raw newlines, so a document parse fails, and the advert inside it is
+  escaped HTML (`&lt;p&gt;`). One unescape before `_text` is what turns it into
+  readable text. The block also gives `datePosted`, `validThrough` (kept as
+  `metadata.expires_at`) and `hiringOrganization`.
+- **Cost:** first fill 85 s for 23 postings (one detail request each, paced at
+  400 ms), then 14 s with every row already described. Some postings are years
+  old by `datePosted` and still listed, so a row's age is not evidence it closed;
+  `last_seen_at` is.
 
 ## HiringCafe (`mode: opencli_eval`)
 
@@ -185,6 +245,40 @@ page for that credential, queries the index itself and returns the rows.
   if they are read again.
 
 
+## Xing (`mode: opencli_eval` with a detail pass)
+
+Xing's own search, added 22/10/2026. `/jobs/find` is an AI-search landing page
+with no list to parse, so the board opens three keyword searches from
+`scan_config.urls`, expands each with "Show more", and reads the cards out of
+your logged-in Chrome. Unlike HiringCafe and Work at a Startup, the card alone
+is not enough: it carries title, employer, place, type and a salary band but no
+advert, so `details: true` reads each *new* posting's own server-rendered
+JSON-LD block through `detail_mode: xing` (`parse_xing_detail`). That is the
+first browser board with a detail pass.
+
+- **On demand since 22/10** (the user's call): a full run reports the board as
+  `on demand only` and skips it, and the board scans only when named. Nothing
+  was removed to do it: one key, `scan_config.on_demand`, was added. Going back
+  to every run is deleting that key, and the parser, adapter and searches are
+  untouched.
+- Two new keys in the fetcher, both general: **`urls`** (several pages per
+  run instead of one `url`, rows seen twice kept once — a search-driven board
+  returns 10-30 rows per query) and **`detail_mode`** (which parser reads the
+  posting page, when the list `mode` is not one).
+- An evaluation that *throws* now waits and retries like a `null` answer rather
+  than failing the run: the common cause is the tab's own load racing the first
+  eval, which is a page not ready, not a broken adapter.
+- Steady state 33-93 s for three searches; first fill 8 min 26 s because every
+  row needed its advert. Fetched count moves between 95 and 127 a run: the
+  search pages rotate which partner cards they show, and a card carries no
+  date, so some come back every time.
+- The board's own reconnaissance, card traps, the four `datePosted` shapes and
+  the standing fact that **Xing hides a posting from a reader whose profile
+  region it does not match** are in `_docs/xing.md`. That last one matters to
+  scanning: the scan reads logged in, so a posting the gate hides never enters
+  the store.
+
+
 ## Region scope: can you actually take this job?
 
 The boards are overwhelmingly US-facing (Indeed/LinkedIn) plus region-gated
@@ -217,6 +311,13 @@ sentence, and prefer a field that carries a region (`Home based - Worldwide`,
 `Remote - Global`) over one that carries none. Expect a mostly US net: in the
 high-score band the well-known employers resolved to a US-only or a named short
 list.
+
+**A job-board badge is the board's claim, never the employer's list.** On
+22/10/2026 one aggregator badge read `Worldwide` on a role that then printed
+"countries we can hire in" covering four continents and naming nine African
+countries, none of them the user's. The classifier had taken the badge as the
+verdict. When a posting's own text carries a hire list, that list wins over the
+badge, and the row goes to `region_gated` with the list in `region_evidence`.
 
 ### What the location sentence does
 
@@ -251,6 +352,13 @@ genuinely worldwide, and both said so in a structured field the aggregator never
 carried (`Anywhere`, "based elsewhere, you'll be hired via our global employer
 partner").
 
+A high score does not fix this. Job #4279 on 29/10/2026 scored 96 with no
+location field, and its body said "Build from anywhere in LATAM". The classifier
+treats the location field as authoritative and reads the body only for strong
+obligation wording, so a region named only inside the body leaves the row
+`unknown`. Read the body of a high-scoring `unknown` row before spending an hour
+on it, and treat the first eligibility sentence as the verdict.
+
 Ashby, Greenhouse and Lever publish a whole board as JSON, so the check costs
 one fetch and no browser session:
 
@@ -265,6 +373,14 @@ curl -s 'https://api.lever.co/v0/postings/<slug>?mode=json'
 
 Lever also renders the apply page server-side, so its whole field list comes out
 of one fetch of `<posting-url>/apply`. Detail: `_docs/lever.md`.
+
+Worked case (24/10): a scraped lead arrived with no location and a Cloudflare
+403 on its aggregator page. The employer's Greenhouse board answered in one
+fetch and the sibling rows told the story: the role read `Remote (West Coast)`
+while two others on the same board read `Remote (U.S.)`, so the tag became
+`us_only`. A second lead that looked equally empty turned out worldwide, with
+the posting offering "any location worldwide" inside a UTC-5 to UTC+8 band that
+contains the user's UTC+1.
 
 - Write the employer's own value into `jobs.location` and let `classify` derive
   the tag. Keep the provenance in `jobs.metadata.employer_ad`.
@@ -411,6 +527,43 @@ python3 -m scanner.tools.rescore            # re-derive match_score after the sc
 - **Classifier upgrade path**: replace the internals of
   `scanner/keywords.Matcher.score()` (or add `scanner/classifier.py` with the
   same contract) — nothing else changes.
+
+## LinkedIn (JobSpy): what the search actually does
+
+Measured 24/10 on board 19, three runs:
+
+| setting | result |
+|---|---|
+| `location: <home country>`, descriptions on, 72h window | 12 to 17 rows, every one based in the user's country, best scores 99 and 96 |
+| `location: European Union`, descriptions on | 25 rows, almost all Berlin, Paris, Milan, Bucharest; a handful say "worldwide" in the advert |
+| `location: Remote` (the old default) | a global mix with Vietnam, France, Australia and Canada, mostly roles that need a local permit |
+
+Four things follow, and each one changed the config:
+
+- **The location field is where the employer sits, not who may apply.
+  `location: Remote` is not a remote filter.** It reads as a place name and
+  returns a global list. The only high-precision setting here is the user's own
+  country.
+- **`linkedin_fetch_description: true` is what makes the board useful.** Without
+  it JobSpy returns a title, a company and a URL, so `match_score` lands at 0 to
+  4 and the Bayesian gate has nothing to read. With it, 15 of 17 rows carried
+  advert text and the same postings scored 99 and 96. The cost is one request per
+  posting: 12 rows go from 11 s to 32 s.
+- **`is_remote` in JobSpy 1.3.0 is a label, not a filter.** The library sets it
+  from the title and location (`is_job_remote`), and never sends LinkedIn's
+  `f_WT=2`. A remote-only LinkedIn search needs the UI or the saved-search URL,
+  not this board.
+- **LinkedIn answers 429 above roughly 25 results**, and JobSpy logs one warning
+  per blocked description while still returning the row. Keep `results_wanted`
+  at 25 or below with descriptions on, and expect a run to take half a minute.
+
+The boolean syntax works in the search term: `AND`, `OR`, `NOT` in capitals,
+`"quoted phrases"` and parentheses are all passed through to LinkedIn. A 72-hour
+window costs nothing extra because dedupe absorbs the overlap between runs.
+
+The worldwide-remote question is still better served by the feeds that publish
+it (`We Work Remotely`, `Real Work From Anywhere`, `Himalayas`, `Jobicy`) than
+by LinkedIn, which mixes an eligible role into two dozen country-locked ones.
 
 ## Cron
 

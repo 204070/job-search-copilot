@@ -291,6 +291,36 @@
       }
     },
     {
+      "name": "Xing",
+      "kind": "job_board",
+      "url": "https://www.xing.com/jobs/find",
+      "enabled": 1,
+      "notes": "Xing's own search, read from your logged-in Chrome (mode opencli_eval, scanner/js/xing_search.js). /jobs/find is only an AI-search landing page, so the board scans the keyword searches in `urls` instead: each renders 5-12 cards and puts the rest behind 'Show more', which the adapter clicks four times. Cards carry title, employer, place, type and a salary band but no advert, so details:true reads the posting's own server-rendered JSON-LD block (detail_mode xing) for new rows. Xing gates a posting by the reader's own profile region ('This job cannot be displayed in your region'), so a posting hidden from this profile never reaches the store; that is a display rule, not the employer's eligibility sentence. See _docs/xing.md.",
+      "scan_strategy": "html",
+      "scan_config": {
+        "mode": "opencli_eval",
+        "profile": "your-opencli-profile",
+        "session": "xingscan",
+        // YOUR searches, one per query: a single Xing query returns a page or
+        // two of cards, so a board is several queries rather than one
+        "urls": [
+          "https://www.xing.com/jobs/search?keywords=software%20engineer",
+          "https://www.xing.com/jobs/search?keywords=full%20stack%20engineer",
+          "https://www.xing.com/jobs/search?keywords=backend%20engineer"
+        ],
+        "js_file": "xing_search.js",
+        "tries": 10,
+        "wait_ms": 3000,
+        "details": true,
+        "detail_mode": "xing",
+        "delay_ms": 400,
+        // ON DEMAND: a full run reports this board and skips it; scan it with
+        // `python3 -m scanner --board Xing`. Remove this key to scan it on
+        // every run again (or set scan_strategy to "manual" to never scan it).
+        "on_demand": true
+      }
+    },
+    {
       "name": "Manual",
       "kind": "other",
       "url": null,

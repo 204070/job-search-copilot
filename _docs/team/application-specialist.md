@@ -85,6 +85,16 @@ from, and what is ambiguous. Then they review and submit.
   that running the panel means telling the agent what it wrote. The ledger has
   to hold what actually went out. Detail: `_docs/workable.md`,
   `_docs/ashby.md`.
+- **An optional free-text prompt is not optional in practice.** A writing
+  sample, a "tell us anything else" box, or a "what would you build" question is
+  the only place on a form where the applicant shows judgement rather than
+  facts, and a blank one sits beside complete forms from other applicants.
+  Application #8 (19/10/2026) left an optional writing sample empty and was
+  rejected with a generic message on 27/10; the cause is not proven, but there
+  is no upside to the blank. Fill it with two or three paragraphs in the
+  applicant's own voice, or name it in the handover as a decision for the user.
+  The standing exception is unchanged: a form that forbids AI-written answers
+  gets no free text from the agent.
 - **The form can rewrite what you filled.** Lever refills name, email, phone,
   company, location and the link fields from the parsed resume on upload, and
   only a real `change` event protects a field, so a value set by direct JS
@@ -138,6 +148,13 @@ Each form phrases its options differently. For every constrained question:
 - Read the ACTUAL option list before picking. If the fact has no exact
   match, choose the truthful nearest (same UTC offset for timezones, the
   catch-all for a missing country) and record what you saw.
+- **An ambiguous question can mean two things, and the option labels decide
+  which.** "What percent of your work is hands-on?" reads as coding time, but
+  on 31/10/2026 the user read it as how much of the work now leans on agentic
+  AI engineering and moved the answer two bands down. Read the label the number
+  carries ("mostly not hands-on") against the reading you chose. When the two
+  readings give different numbers, say which one you used in the handover so the
+  user can flip it at review.
 - Duplicate questions (work-auth twice, sponsorship now + future) get
   consistent answers from the profile.
 - Exit criteria: no pick was made from memory of another posting's options.
@@ -164,6 +181,34 @@ This applies to every form and every draft, not only Ashby's. Worked cases:
   experience, and a project recorded as small is not offered as depth.
 - A fact about the user belongs in `profile.jsonc`. The wording sent to this
   employer belongs in the question bank.
+
+### When the form forbids AI writing
+
+Read the form's own rules before the first keystroke. A programme that bans AI
+drafting states it on the page, usually near the top or on the form itself, and
+often names the penalty. Generator Residency (22/10/2026) puts it twice: no AI
+writing, rewriting or polishing, Grammarly included, and a rejection for the
+whole application if it is used.
+
+- Then write no free-response text at all, not a draft, not an outline of one
+  answer. A sketch that the user rewrites is still AI-written text, and it puts
+  their place at risk.
+- Prefill only the factual fields: name, email, phone, location, employment
+  status, links, and the CV upload. Those carry no voice.
+- Hand the user the exact question list with its word limits, and say which
+  facts they need at hand. That is help with the task, not writing for it.
+- Never tick a confirmation that says the answers are the user's own writing.
+- **The user can override, and does.** On 22/10/2026 the same form family drew a
+  second application and the user instructed the agent to write both essays
+  anyway, accepting the cancellation risk, then to reuse the first
+  application's answers. Flag the rule once, record the override in the
+  application's `notes` and `metadata`, then do the work and do not raise it
+  again. The essays must still be built from facts on file.
+- **Reuse before you write.** One board reuses one form template, so the second
+  posting asks what the first one asked. Read the earlier application's
+  `metadata.drafts` and `submitted_answers` first. The bank is the second place
+  to look, not the first, because a long answer may never have been recorded
+  there. → `_docs/jobs-db.md`
 
 ## Phase 5 — Attach the resume
 
@@ -296,8 +341,8 @@ the answer.
 
 ## Skip / Archive a job
 
-If a job is determined ineligible (wrong location, visa mismatch, role
-mismatch, stale listing, etc.) **before or during fill**:
+Archive only on ineligibility: wrong location, an explicit exclusion, a stale or
+removed posting. **A gap in the must-haves is not ineligibility** (see below).
 
 1. Set `jobs.status = 'archived'` with `metadata.reason_for_archive`
    explaining why (e.g., "US-only role; no sponsorship; applicant outside the US").
@@ -306,6 +351,19 @@ mismatch, stale listing, etc.) **before or during fill**:
 3. Record the learning where it belongs: the detail and the worked case in
    `_docs/<ats>.md`, one short rule with a pointer in `MEMORY.md`.
 4. Do **not** fill further; the job is out of the pipeline.
+
+### A gap is a sentence, not a veto
+
+The user is an engineer who learned most of the stack on the job. On 23/10/2026
+they corrected an agent that refused to fill a posting because the WebRTC
+internals were missing from their history: "you don't make calls on gap, you can
+state it but don't dismiss a job I am qualified for."
+
+So: read the must-haves against the profile, write the gap into the handover and,
+where the form asks "why this role", into one honest line of the answer. Then
+fill the form and let the user decide. A stretch role is theirs to accept. Two
+exceptions stay real: an explicit eligibility bar, and a posting that no longer
+exists. Worked case: `artifacts/applications/2026-10-23-livekit-backend-real-time-media.md`.
 
 ## Job vs Application status flows
 

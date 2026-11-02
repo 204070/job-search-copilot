@@ -69,10 +69,10 @@ curl -s 'https://api.lever.co/v0/postings/<slug>/<posting-uuid>?mode=json'  # on
      `JSON.stringify(results[0])`. **`selectedLocation` is the value the form
      actually submits**, and the input's `required` flag alone will not carry
      the city.
-  3. Click another field to force the blur, then read both back. If both
-     survive, the pair is committed. Because this is a direct assignment, do it
-     **after** the resume parse, or dispatch a `change` on both inputs first,
-     or the parse will overwrite the pair.
+  3. Read both back after the dropdown has closed. If both survive, the pair is
+     committed. Do it **after** the resume parse, and assign the two values as
+     the last action: the parse overwrites a hand-set pair, and a `change`
+     event on the pair makes the widget blank it (see below).
 - **The resume parse rewrites every field it recognises, and only `change`
   protects a field.** Uploading a file fires `POST /parseResume`, and the reply
   refills `org`, `phone`, `name`, `email`, `location`, `selectedLocation`, the
@@ -95,6 +95,28 @@ curl -s 'https://api.lever.co/v0/postings/<slug>/<posting-uuid>?mode=json'  # on
   repair that worked: reopen the apply URL in a fresh browser, refill, submit.
   Practical guard: hand the filled page over at once, and tell the user to
   solve and submit within a minute or two.
+- **A failed POST re-render survives a reload on the same tab.** After the
+  captcha failure the apply URL came back with the error banner still on the
+  page and every field still filled, and `location.reload()` did not clear it.
+  `resumeStorageId` going empty while the text fields keep their values is the
+  signature of that stale render. Navigating to the posting URL first and then
+  to `/apply` produced a real GET (`performance.getEntriesByType('navigation')
+  [0].type === 'navigate'`), an empty form and no banner. Do that before
+  refilling rather than retyping into the failed page.
+- **The location lookup is `?text=`, and `?q=` answers `[]` on every board.**
+  Measured 1/11/2026: `GET /searchLocations?q=London` returns `[]` with status
+  200, so the endpoint looks switched off for that board and the dropdown shows
+  "No location found" for a city it knows. `GET /searchLocations?text=London`
+  returns `[{name, id}]`. Never conclude from an empty `?q=` reply that the
+  board has no autocomplete.
+- **Dispatching `change` on the location pair hands it back to the widget,
+  which blanks both.** Setting `#location-input` and `#selected-location` and
+  then firing `input` plus `change` on each produced `{"input":"",
+  "sel":""}` within a second: the widget's own validator runs, finds no picked
+  result, and clears the pair. Assign the two values as the last action, fire
+  no event on them, and read back that `.dropdown-container` is
+  `display:none`. When the dropdown is closed the blur handler has nothing to
+  blank, and the pair survives.
 - **A bracket in a field name needs a quoted selector.**
   `input[name="urls[LinkedIn]"]`, and the same for the `cards[...]` controls.
 - **hCaptcha ships on every Lever form** (two `newassets.hcaptcha.com` iframes).

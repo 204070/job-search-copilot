@@ -132,6 +132,16 @@ must not un-send it. `record --answer` writes the *reusable* answer, so a note
 about a form belongs in `metadata` (the FAQ renders `original_answer`), not in
 `answer`; otherwise the sent/revised comparison compares a note with an answer.
 
+A long answer that was typed into a form but never recorded in the bank still
+exists: `applications.metadata.drafts` holds the text as it was filled, and
+`submitted_answers` holds the short fields. Two postings on one board share one
+form template, so before writing a new essay, read the earlier application's
+`metadata.drafts` and reuse the text the user already approved. On 22/10/2026 a
+second posting on the same Ashby board was filled with fresh drafts and the user
+asked for the first one back; the originals were recovered from that column.
+`essay_final_note` records that the user may have edited the text after review,
+so it can differ from what was sent.
+
 `promotes_to` marks a question whose answer looks like it belongs in
 `profile.jsonc`. When that turns out to be wrong — compensation expectations,
 say, which are answered case by case rather than as one fixed fact — drop the
@@ -208,20 +218,70 @@ documented the more reliably its reminder disappeared, and a freshly submitted
 one read "no action (a reply is on record)" with nobody having replied. `reply`
 is how contact that moves no status gets recorded.
 
+A follow-up already sent is the second input, and it is not contact either. The
+digest reads the newest `follow_up` row for the application (a plain one, or a
+scheduled one marked done, dated by `done_at`) and, while it is inside the same
+7-day window, replaces the suggestion with `followed up Nd ago; nudge after day
+7`. Without that, an application stayed in section 2 asking for a follow-up the
+day after one went out. Record a sent follow-up as its own `follow_up` row so
+the date is real, and let the suggestion return once the window passes with
+still no reply.
+
 A `revised` bank answer is reported in section 6 but is not a task. Wording is
 chosen per application, so the stored text differing from what one employer
 received is the normal state of the bank; what carries forward is `reasoning`,
 which `lookup` prints as `WHY` beside the text that went out.
 
-"Next roles" uses the same order as the scanner report
-(`scanner.eligibility.scope_rank`, shared so the two cannot drift): worldwide,
-then a `region_gated` list that names a region you are in (EMEA, MEA, Africa),
-then `unknown`, then a list that names only other regions, then `us_only`. Score
-breaks the tie, and each employer is capped at two rows so one company cannot
-fill the page. It applies the scanner's `MATCH_MIN_SCORE` default (15) as a
-floor, and uses `Matcher.admits()` rather than a private regex to decide whether
-a score-0 row is still a role worth reading: the two must not disagree about
-what a target role is.
+"Next roles" sorts in four steps, and each one is a separate, tested rule:
+
+1. **Can you take it?** `scanner.eligibility.scope_rank` puts worldwide, a
+   `region_gated` list that names a region you are in (EMEA, MEA, Africa) and
+   `unknown` in one group, ordered by score, because silence is not a bar and a
+   Lagos role at 96 should not sit under a worldwide role at 38. A list that
+   names only other regions, and `us_only`, stay below that group.
+2. **Is it remote work or a relocation?** An office or hybrid posting abroad,
+   and an `unknown` workplace type beside a named foreign city, sits below every
+   remote posting. A local office in Nigeria stays in the main group. This is
+   what keeps a 99-point Berlin requisition out of the top of a remote search.
+3. **Employer history.** `adjust` is added to the score before the sort: -15 for
+   each application sent in the last 90 days, -20 for each rejection in the same
+   window, plus a named weight from `employer_weights` (see below). The raw
+   score stays in the table so the decision is visible.
+4. **Then the floor and the caps.** A posting older than 45 days leaves the
+   table even while its board still lists it, the same role reposted under a new
+   id is kept once, each employer is capped at two rows, and a score below 15 is
+   only kept when `Matcher.admits()` calls the title a target role. The gate is
+   shared with the scanner so the two cannot disagree about what a role is.
+
+`employer_weights` is the named part: `python3 -m db.tools.review employer --set
+"Company" --weight -25 --reason "why"` demotes every posting from that employer,
+`--remove "Company"` drops it, and no flag lists them. It is a table rather than
+a config file because it names employers and this repo is public. Use it for a
+judgement the data cannot carry, such as requirements that make a rejection
+likely; use the automatic weights for what the applications already say.
+
+`skipped_countries` is the same shape for a place: `python3 -m db.tools.review
+country --add <key> --term '<regex>' --reason "why"` hides every posting whose
+`location` or `region_evidence` matches one of the patterns, `--remove <key>`
+brings them back, and no flag lists them. Terms are regular expressions because
+one country has several spellings on these boards: the name, a two-letter code
+inside a city list, and a city that never names the country at all.
+
+There is a second list, `--text-term`, matched against the posting text. It
+exists because some boards leave the location field empty and put the place in
+the first line of the ad ("Location - India (Remote)", "This is a fulltime
+position based in Bangalore"), and those postings escaped the first list. Keep
+it to phrasings that declare where the work sits, and it is applied only when
+`location` and `region_evidence` are both empty: a company also names its
+offices, its team and the places it has customers, so "India" anywhere in a
+description proves nothing. The selftest holds the false positives that matter
+(a team based abroad, a multi-region list, an office list) as cases.
+
+A hidden posting is not archived: it stays in the pool, and the digest reports
+how many it left out, so the decision is one row to delete rather than a
+rescan. Use it for a place where an application cannot realistically convert; a
+named office location that a candidate may relocate to is not that, and belongs
+in `location_policy` instead.
 
 An employer that has already received two applications inside seven days leaves
 the table entirely and appears under it as cooling down, with the date the
